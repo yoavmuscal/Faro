@@ -39,10 +39,13 @@ private extension View {
 @MainActor
 final class OnboardingViewModel: ObservableObject {
     enum Field: Int, CaseIterable {
-        case businessName, description, employeeCount, state, annualRevenue
+        case businessName, contactInfo, description, employeeCount, state, annualRevenue
     }
 
     @Published var businessName = ""
+    @Published var contactFirstName = ""
+    @Published var contactMiddleName = ""
+    @Published var contactLastName = ""
     @Published var description = ""
     @Published var employeeCountText = ""
     @Published var state = ""
@@ -59,6 +62,9 @@ final class OnboardingViewModel: ObservableObject {
     var canAdvance: Bool {
         switch currentField {
         case .businessName: return !businessName.trimmingCharacters(in: .whitespaces).isEmpty
+        case .contactInfo:
+            return !contactFirstName.trimmingCharacters(in: .whitespaces).isEmpty &&
+                   !contactLastName.trimmingCharacters(in: .whitespaces).isEmpty
         case .description: return !description.trimmingCharacters(in: .whitespaces).isEmpty
         case .employeeCount: return Int(employeeCountText) != nil
         case .state: return state.count == 2
@@ -75,10 +81,33 @@ final class OnboardingViewModel: ObservableObject {
     var fieldSubtitle: String {
         switch currentField {
         case .businessName: return "We'll use this throughout your coverage report."
+        case .contactInfo: return "We'll personalize your reports with their details."
         case .description: return "The more detail, the better we can match you."
         case .employeeCount: return "This helps size workers' comp and liability."
         case .state: return "State regulations affect your requirements."
         case .annualRevenue: return "Revenue drives premium estimates."
+        }
+    }
+
+    var fieldQuestion: String {
+        switch currentField {
+        case .businessName: return "What's your business called?"
+        case .contactInfo: return "Who's the point of contact?"
+        case .description: return "Tell us what you do"
+        case .employeeCount: return "How big is the team?"
+        case .state: return "Where are you based?"
+        case .annualRevenue: return "What's the annual revenue?"
+        }
+    }
+
+    var fieldIcon: String {
+        switch currentField {
+        case .businessName: return "building.2.fill"
+        case .contactInfo: return "person.crop.circle.fill"
+        case .description: return "text.alignleft"
+        case .employeeCount: return "person.3.fill"
+        case .state: return "map.fill"
+        case .annualRevenue: return "dollarsign.circle.fill"
         }
     }
 
@@ -100,6 +129,25 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
 
+    func loadDemoData() {
+        businessName = "Sunny Days Daycare"
+        contactFirstName = "Sarah"
+        contactMiddleName = ""
+        contactLastName = "Johnson"
+        description = "Licensed childcare center serving children ages 6 weeks to 12 years. We provide full-day care, after-school programs, and summer camps across 3 locations in central New Jersey. Our certified staff oversee indoor play areas, outdoor playgrounds, and early learning programs."
+        employeeCountText = "28"
+        state = "NJ"
+        annualRevenueText = "1,200,000"
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
+            currentField = .annualRevenue
+        }
+    }
+
+    func prefillContact(firstName: String, lastName: String) {
+        if contactFirstName.isEmpty { contactFirstName = firstName }
+        if contactLastName.isEmpty { contactLastName = lastName }
+    }
+
     private func submit() async {
         isSubmitting = true
         errorMessage = nil
@@ -109,7 +157,11 @@ final class OnboardingViewModel: ObservableObject {
             description: description,
             employeeCount: Int(employeeCountText) ?? 0,
             state: state.uppercased(),
-            annualRevenue: revenue
+            annualRevenue: revenue,
+            contactFirstName: contactFirstName.isEmpty ? nil : contactFirstName,
+            contactMiddleName: contactMiddleName.isEmpty ? nil : contactMiddleName,
+            contactLastName: contactLastName.isEmpty ? nil : contactLastName,
+            contactEmail: nil
         )
         do {
             let response = try await APIService.shared.submitIntake(intake)
@@ -127,6 +179,7 @@ struct OnboardingView: View {
     @EnvironmentObject private var appState: FaroAppState
     @StateObject private var vm = OnboardingViewModel()
     @State private var appeared = false
+    var isDemo: Bool = false
 
     var body: some View {
         ZStack {
@@ -140,10 +193,13 @@ struct OnboardingView: View {
 
                 questionArea
                     .frame(maxWidth: 480)
+                    .frame(maxWidth: .infinity)
 
                 Spacer(minLength: FaroSpacing.xl)
 
                 footer
+                    .frame(maxWidth: 480)
+                    .frame(maxWidth: .infinity)
                     .padding(.bottom, FaroSpacing.xl)
             }
             .padding(.horizontal, FaroSpacing.lg)
@@ -179,11 +235,18 @@ struct OnboardingView: View {
         }
         .onChange(of: vm.sessionId) { _, newId in
             if let id = newId {
+                appState.contactFirstName = vm.contactFirstName
+                appState.contactMiddleName = vm.contactMiddleName
+                appState.contactLastName = vm.contactLastName
                 appState.beginNewAnalysis(sessionId: id, businessName: vm.businessName)
             }
         }
         .onAppear {
             withAnimation(.easeOut(duration: 0.8)) { appeared = true }
+            vm.prefillContact(firstName: appState.userFirstName, lastName: appState.userLastName)
+            if isDemo {
+                vm.loadDemoData()
+            }
         }
     }
 
@@ -248,7 +311,7 @@ struct OnboardingView: View {
                         .frame(height: 4)
                 }
             }
-            .frame(maxWidth: 200)
+            .frame(maxWidth: 240)
 
             Text("Step \(vm.stepLabel)")
                 .font(FaroType.caption())
@@ -264,46 +327,58 @@ struct OnboardingView: View {
                 switch vm.currentField {
                 case .businessName:
                     OnboardingQuestionCard(
-                        icon: "building.2.fill",
-                        question: "What's your business called?",
+                        icon: vm.fieldIcon,
+                        question: vm.fieldQuestion,
                         subtitle: vm.fieldSubtitle,
                         placeholder: "e.g. Sunny Days Daycare",
-                        text: $vm.businessName
+                        text: $vm.businessName,
+                        onSubmit: vm.advance
+                    )
+                case .contactInfo:
+                    ContactInfoCard(
+                        firstName: $vm.contactFirstName,
+                        middleName: $vm.contactMiddleName,
+                        lastName: $vm.contactLastName,
+                        onSubmit: vm.advance
                     )
                 case .description:
                     OnboardingQuestionCard(
-                        icon: "text.alignleft",
-                        question: "Describe what you do",
+                        icon: vm.fieldIcon,
+                        question: vm.fieldQuestion,
                         subtitle: vm.fieldSubtitle,
                         placeholder: "Tell us about your business…",
                         text: $vm.description,
-                        isMultiline: true
+                        isMultiline: true,
+                        onSubmit: vm.advance
                     )
                 case .employeeCount:
                     OnboardingQuestionCard(
-                        icon: "person.3.fill",
-                        question: "How many employees?",
+                        icon: vm.fieldIcon,
+                        question: vm.fieldQuestion,
                         subtitle: vm.fieldSubtitle,
                         placeholder: "12",
                         text: $vm.employeeCountText,
-                        keyboard: .numberPad
+                        keyboard: .numberPad,
+                        onSubmit: vm.advance
                     )
                 case .state:
                     OnboardingQuestionCard(
-                        icon: "map.fill",
-                        question: "Which state?",
+                        icon: vm.fieldIcon,
+                        question: vm.fieldQuestion,
                         subtitle: vm.fieldSubtitle,
                         placeholder: "NJ",
-                        text: $vm.state
+                        text: $vm.state,
+                        onSubmit: vm.advance
                     )
                 case .annualRevenue:
                     OnboardingQuestionCard(
-                        icon: "dollarsign.circle.fill",
-                        question: "Annual revenue?",
+                        icon: vm.fieldIcon,
+                        question: vm.fieldQuestion,
                         subtitle: vm.fieldSubtitle,
                         placeholder: "800,000",
                         text: $vm.annualRevenueText,
-                        keyboard: .decimalPad
+                        keyboard: .decimalPad,
+                        onSubmit: vm.advance
                     )
                 }
             }
@@ -394,6 +469,7 @@ private struct OnboardingQuestionCard: View {
     @Binding var text: String
     var isMultiline = false
     var keyboard: FaroTextKeyboard = .default
+    var onSubmit: () -> Void = {}
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -437,6 +513,7 @@ private struct OnboardingQuestionCard: View {
                 TextField(placeholder, text: $text)
                     .font(FaroType.title3(.medium))
                     .faroKeyboard(keyboard)
+                    .onSubmit { onSubmit() }
                     .padding(.horizontal, FaroSpacing.md)
                     .frame(height: 54)
                     .background {
@@ -455,6 +532,85 @@ private struct OnboardingQuestionCard: View {
         }
         .padding(.horizontal, FaroSpacing.sm)
         .onAppear { isFocused = true }
+    }
+}
+
+// MARK: - Contact Info Card (multi-field step)
+
+private struct ContactInfoCard: View {
+    @Binding var firstName: String
+    @Binding var middleName: String
+    @Binding var lastName: String
+    var onSubmit: () -> Void = {}
+    @FocusState private var focusedField: ContactField?
+
+    private enum ContactField: Hashable {
+        case first, middle, last
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.lg) {
+            VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.title2.weight(.medium))
+                    .foregroundStyle(FaroPalette.purpleDeep)
+                    .symbolRenderingMode(.hierarchical)
+
+                Text("Who's the point of contact?")
+                    .font(FaroType.title(.bold))
+                    .foregroundStyle(FaroPalette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("We'll personalize your reports with their details.")
+                    .font(FaroType.subheadline())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: FaroSpacing.sm) {
+                contactField("First name", text: $firstName, field: .first) {
+                    focusedField = .middle
+                }
+                contactField("Middle name (optional)", text: $middleName, field: .middle) {
+                    focusedField = .last
+                }
+                contactField("Last name", text: $lastName, field: .last) {
+                    onSubmit()
+                }
+            }
+        }
+        .padding(.horizontal, FaroSpacing.sm)
+        .onAppear { focusedField = .first }
+    }
+
+    private func contactField(
+        _ placeholder: String,
+        text: Binding<String>,
+        field: ContactField,
+        onFieldSubmit: @escaping () -> Void
+    ) -> some View {
+        TextField(placeholder, text: text)
+            .font(FaroType.title3(.medium))
+            .focused($focusedField, equals: field)
+            .onSubmit(onFieldSubmit)
+            #if os(iOS)
+            .textInputAutocapitalization(.words)
+            #endif
+            .padding(.horizontal, FaroSpacing.md)
+            .frame(height: 54)
+            .background {
+                RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                    .strokeBorder(
+                        focusedField == field
+                        ? FaroPalette.purpleDeep.opacity(0.5)
+                        : FaroPalette.glassStroke,
+                        lineWidth: focusedField == field ? 1.5 : 1
+                    )
+            }
     }
 }
 

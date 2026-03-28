@@ -117,6 +117,10 @@ class IntakeRequest(FaroBaseModel):
     employee_count: int
     state: str
     annual_revenue: float
+    contact_first_name: Optional[str] = None
+    contact_middle_name: Optional[str] = None
+    contact_last_name: Optional[str] = None
+    contact_email: Optional[str] = None
 
 
 class IntakeResponse(FaroBaseModel):
