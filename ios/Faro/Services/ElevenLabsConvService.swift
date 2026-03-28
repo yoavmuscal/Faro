@@ -1,7 +1,11 @@
 import Foundation
+import AVFoundation
+import Darwin
 
-/// Helpers for conversational intake. A future WebRTC client can use `signedUrl` from `/conv/start`
-/// to stream audio; until then the app submits a structured transcript compatible with the backend extractor.
+// MARK: - Guided form → synthetic transcript (Mert’s UI/UX flow)
+
+/// Helpers for conversational intake. `signedUrl` from `/conv/start` can power a live WebSocket client;
+/// the guided questionnaire also submits a structured transcript compatible with the backend extractor.
 enum ElevenLabsConvService {
     /// Builds transcript turns from the same fields as the guided form so `/conv/complete` can run the pipeline.
     static func transcript(from intake: IntakeRequest) -> [ConvTranscriptTurn] {
@@ -18,5 +22,358 @@ enum ElevenLabsConvService {
                 message: "Thank you. I have enough detail to run your coverage analysis."
             ),
         ]
+    }
+}
+
+// MARK: - Live WebSocket (ElevenLabs Conversational AI — protocol aligned with official Python SDK)
+
+/// Bidirectional audio + events for ElevenLabs Conversational AI WebSocket.
+@MainActor
+final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSessionWebSocketDelegate {
+
+    enum ConnectionState {
+        case disconnected, connecting, connected, error(String)
+    }
+
+    @Published var state: ConnectionState = .disconnected
+    @Published var transcript: [ConvTranscriptTurn] = []
+    @Published var isAgentSpeaking: Bool = false
+
+    private nonisolated(unsafe) var webSocketTask: URLSessionWebSocketTask?
+    private nonisolated(unsafe) var micConverter: AVAudioConverter?
+    private nonisolated(unsafe) var uplinkPCMFormat: AVAudioFormat?
+    private nonisolated(unsafe) var playbackPCMFormat: AVAudioFormat?
+    private nonisolated(unsafe) var lastInterruptEventId: Int = 0
+    private nonisolated(unsafe) var captureStarted = false
+    private nonisolated(unsafe) var tapInstalled = false
+
+    private let audioEngine = AVAudioEngine()
+    private let playerNode = AVAudioPlayerNode()
+
+    private static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+
+    override init() {
+        super.init()
+        audioEngine.attach(playerNode)
+    }
+
+    func connect(signedUrl: String) async throws {
+        state = .connecting
+        transcript.removeAll()
+        resetSessionAudioState()
+
+        #if os(iOS)
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        try audioSession.setActive(true)
+        #endif
+
+        guard let url = URL(string: signedUrl) else {
+            state = .error("Invalid URL")
+            throw URLError(.badURL)
+        }
+
+        let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+        webSocketTask = session.webSocketTask(with: url)
+        webSocketTask?.resume()
+
+        try await sendConversationInitiationClientData()
+        listenForMessages()
+
+        state = .connected
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            self.ensureCaptureStarted()
+        }
+    }
+
+    func disconnect() {
+        webSocketTask?.cancel(with: .normalClosure, reason: nil)
+        webSocketTask = nil
+
+        if tapInstalled {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
+        audioEngine.stop()
+        playerNode.stop()
+
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(false)
+        #endif
+
+        micConverter = nil
+        resetSessionAudioState()
+        state = .disconnected
+    }
+
+    private func sendConversationInitiationClientData() async throws {
+        let payload: [String: Any] = [
+            "type": "conversation_initiation_client_data",
+            "custom_llm_extra_body": [:] as [String: Any],
+            "conversation_config_override": [:] as [String: Any],
+            "dynamic_variables": [:] as [String: Any],
+            "source_info": [
+                "source": "ios",
+                "version": Self.appVersion,
+            ],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [])
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw URLError(.cannotParseResponse)
+        }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            webSocketTask?.send(.string(json)) { error in
+                if let error {
+                    cont.resume(throwing: error)
+                } else {
+                    cont.resume()
+                }
+            }
+        }
+    }
+
+    private nonisolated func listenForMessages() {
+        webSocketTask?.receive { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let message):
+                if case .string(let jsonString) = message {
+                    self.handleWebSocketMessage(jsonString)
+                }
+                self.listenForMessages()
+            case .failure(let error):
+                Task { @MainActor in
+                    self.state = .error(error.localizedDescription)
+                    self.disconnect()
+                }
+            }
+        }
+    }
+
+    private nonisolated func handleWebSocketMessage(_ jsonString: String) {
+        guard let data = jsonString.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = obj["type"] as? String else { return }
+
+        switch type {
+        case "conversation_initiation_metadata":
+            if let ev = obj["conversation_initiation_metadata_event"] as? [String: Any] {
+                let rate = ElevenLabsLiveConversationService.parsePCMSampleRate(ev["agent_output_audio_format"] as? String) ?? 16_000
+                Task { @MainActor in
+                    self.applyAgentOutputSampleRate(rate)
+                    self.ensureCaptureStarted()
+                }
+            }
+
+        case "ping":
+            if let ev = obj["ping_event"] as? [String: Any], let eid = ev["event_id"] {
+                sendPong(eventId: eid)
+            }
+
+        case "audio":
+            guard let audioEvent = obj["audio_event"] as? [String: Any],
+                  let b64 = audioEvent["audio_base_64"] as? String,
+                  let raw = Data(base64Encoded: b64) else { return }
+            let eid = audioEvent["event_id"]
+            let eventId = eid.flatMap { Int("\($0)") } ?? 0
+            if eventId <= lastInterruptEventId { return }
+            Task { @MainActor in self.playIncomingAudio(data: raw) }
+
+        case "agent_response":
+            guard let ev = obj["agent_response_event"] as? [String: Any],
+                  let text = (ev["agent_response"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { return }
+            Task { @MainActor in
+                self.transcript.append(ConvTranscriptTurn(role: "agent", message: text))
+            }
+
+        case "user_transcript":
+            guard let ev = obj["user_transcription_event"] as? [String: Any],
+                  let text = (ev["user_transcript"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { return }
+            Task { @MainActor in
+                self.transcript.append(ConvTranscriptTurn(role: "user", message: text))
+            }
+
+        case "agent_response_correction":
+            guard let ev = obj["agent_response_correction_event"] as? [String: Any],
+                  let corrected = (ev["corrected_agent_response"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+            Task { @MainActor in
+                if let idx = self.transcript.lastIndex(where: { $0.role == "agent" }) {
+                    self.transcript[idx] = ConvTranscriptTurn(role: "agent", message: corrected)
+                }
+            }
+
+        case "interruption":
+            if let ev = obj["interruption_event"] as? [String: Any],
+               let eid = ev["event_id"],
+               let n = Int("\(eid)") {
+                lastInterruptEventId = n
+            }
+            Task { @MainActor in
+                self.playerNode.stop()
+                self.playerNode.play()
+            }
+
+        default:
+            break
+        }
+    }
+
+    private nonisolated func sendPong(eventId: Any) {
+        let payload: [String: Any] = ["type": "pong", "event_id": eventId]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webSocketTask?.send(.string(json)) { _ in }
+    }
+
+    private nonisolated static func parsePCMSampleRate(_ format: String?) -> Double? {
+        guard let format else { return nil }
+        if format.hasPrefix("pcm_"), let hz = Double(format.dropFirst(4)) {
+            return hz
+        }
+        return nil
+    }
+
+    @MainActor
+    private func applyAgentOutputSampleRate(_ sampleRate: Double) {
+        guard sampleRate > 0 else { return }
+        guard let fmt = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: sampleRate,
+            channels: 1,
+            interleaved: true
+        ) else { return }
+        playbackPCMFormat = fmt
+        let wasRunning = audioEngine.isRunning
+        if wasRunning {
+            audioEngine.stop()
+        }
+        reconnectPlayerToMixer(format: fmt)
+        if wasRunning {
+            try? audioEngine.start()
+            playerNode.play()
+        }
+    }
+
+    @MainActor
+    private func reconnectPlayerToMixer(format: AVAudioFormat) {
+        audioEngine.disconnectNodeInput(playerNode)
+        audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: format)
+    }
+
+    @MainActor
+    private func ensureCaptureStarted() {
+        guard captureStarted == false else { return }
+        captureStarted = true
+
+        if playbackPCMFormat == nil {
+            playbackPCMFormat = AVAudioFormat(
+                commonFormat: .pcmFormatInt16,
+                sampleRate: 16_000,
+                channels: 1,
+                interleaved: true
+            )
+        }
+        if let fmt = playbackPCMFormat {
+            reconnectPlayerToMixer(format: fmt)
+        }
+
+        let inputNode = audioEngine.inputNode
+        let hwFormat = inputNode.outputFormat(forBus: 0)
+
+        guard let uplink = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: 16_000,
+            channels: 1,
+            interleaved: true
+        ) else { return }
+
+        uplinkPCMFormat = uplink
+        guard let converter = AVAudioConverter(from: hwFormat, to: uplink) else { return }
+        micConverter = converter
+
+        if tapInstalled == false {
+            tapInstalled = true
+            inputNode.installTap(onBus: 0, bufferSize: 4_096, format: hwFormat) { [weak self] buffer, _ in
+                self?.processMicInput(buffer: buffer)
+            }
+        }
+
+        do {
+            try audioEngine.start()
+            playerNode.play()
+        } catch {
+            state = .error(error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func resetSessionAudioState() {
+        lastInterruptEventId = 0
+        captureStarted = false
+        micConverter = nil
+        uplinkPCMFormat = nil
+        playbackPCMFormat = nil
+    }
+
+    private nonisolated func processMicInput(buffer: AVAudioPCMBuffer) {
+        guard let converter = micConverter,
+              let outFormat = uplinkPCMFormat,
+              let task = webSocketTask else { return }
+
+        let ratio = outFormat.sampleRate / buffer.format.sampleRate
+        let outCapacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 32
+        guard let outBuf = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: outCapacity) else { return }
+
+        final class InputBox: @unchecked Sendable {
+            var pcm: AVAudioPCMBuffer?
+            init(_ pcm: AVAudioPCMBuffer) { self.pcm = pcm }
+        }
+        let box = InputBox(buffer)
+        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            guard let b = box.pcm else {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            box.pcm = nil
+            outStatus.pointee = .haveData
+            return b
+        }
+
+        var err: NSError?
+        let status = converter.convert(to: outBuf, error: &err, withInputFrom: inputBlock)
+        guard err == nil, status != .error, outBuf.frameLength > 0 else { return }
+
+        guard let ch0 = outBuf.int16ChannelData else { return }
+        let byteCount = Int(outBuf.frameLength) * MemoryLayout<Int16>.size
+        let pcm = Data(bytes: ch0[0], count: byteCount)
+        let base64 = pcm.base64EncodedString()
+        let chunk = "{\"user_audio_chunk\":\"\(base64)\"}"
+
+        task.send(.string(chunk)) { _ in }
+    }
+
+    private func playIncomingAudio(data: Data) {
+        guard let format = playbackPCMFormat else { return }
+        let bytesPerFrame = Int(format.streamDescription.pointee.mBytesPerFrame)
+        guard bytesPerFrame > 0, data.count % bytesPerFrame == 0 else { return }
+        let frameCount = UInt32(data.count / bytesPerFrame)
+
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return }
+        buffer.frameLength = frameCount
+
+        data.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress,
+                  let dst = buffer.int16ChannelData else { return }
+            memcpy(dst[0], base, data.count)
+        }
+
+        playerNode.scheduleBuffer(buffer, completionHandler: nil)
     }
 }
