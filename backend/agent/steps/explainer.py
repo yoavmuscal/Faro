@@ -1,15 +1,12 @@
 """
 Step 4 — Explainer
-Input:  submission packet + coverage requirements
-Output: plain-English summary string + voice playback URL (/audio/{session_id})
-TTS:    ElevenLabs when ELEVENLABS_API_KEY is set; audio stored in MongoDB for GET /audio/{session_id}.
+Output: plain_english_summary, voice_url (/audio/{session_id} when ElevenLabs + DB succeed).
 """
-import os
-import logging
-
-import httpx
 import json
-
+import logging
+import os
+import re
+import httpx
 import database as db
 from ..llm import chat_with_fallback
 
@@ -22,75 +19,95 @@ Focus on what each policy actually protects them from in clear, real-world terms
 USER_PROMPT_TEMPLATE = """Write a plain-English summary of this business's insurance needs.
 
 Business: {business_name}
-Coverage requirements:
+Industry: {industry}
+Risk context: {risk_context}
+
+Near-term (required or recommended):
 {coverage_json}
 
-Write as if you are talking directly to the owner. Use "you" and "your business".
-Structure it as:
-1. One opening sentence about the overall picture ("Your business type has [X] coverage needs...")
-2. For each REQUIRED coverage: one sentence on what it covers in plain English
-3. For each RECOMMENDED coverage: one sentence, framed as "We also recommend..."
-4. One closing sentence about next steps
+Growth / later (projected triggers, if any):
+{projected_json}
 
-Keep it under 200 words. No bullet points — flowing prose that reads naturally when spoken aloud.
-This text will be converted to speech."""
+Write to the owner using "you" / "your business". One opening sentence, then required, then recommended, then projected if any, then one closing line on next steps.
+Under 200 words, flowing prose (no bullets). This will be read aloud."""
 
 ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+_DEFAULT_MAX_TTS_CHARS = 4000
+
+
+def _strip_wrappers(raw: str) -> str:
+    text = raw.strip()
+    m = re.match(r"^```(?:\w*)?\s*\n?(.*?)\n?```\s*$", text, re.DOTALL | re.IGNORECASE)
+    if m:
+        text = m.group(1).strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        text = text[1:-1].strip()
+    return text
+
+
+def _truncate_tts(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    cut = text[: max_chars + 1]
+    dot = cut.rfind(". ")
+    if dot > max_chars // 2:
+        return cut[: dot + 1].strip()
+    return text[:max_chars].rstrip() + "…"
 
 
 async def synthesize_speech(session_id: str, text: str) -> str:
-    """
-    Generate MP3 via ElevenLabs, store in MongoDB, return relative URL for the iOS app
-    (prepends API base URL when the path starts with /).
-    """
-    api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
-    if not api_key or not text.strip():
+    key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    if not key or not text.strip():
         return ""
 
-    voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM").strip()
-    model_id = os.environ.get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2").strip()
-    url = ELEVENLABS_TTS_URL.format(voice_id=voice_id)
+    max_c = int(os.environ.get("ELEVENLABS_MAX_CHARS", str(_DEFAULT_MAX_TTS_CHARS)))
+    tts_body = _truncate_tts(text, max_c)
+    vid = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM").strip()
+    mid = os.environ.get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2").strip()
 
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                url,
-                headers={
-                    "xi-api-key": api_key,
-                    "Accept": "audio/mpeg",
-                    "Content-Type": "application/json",
-                },
+            r = await client.post(
+                ELEVENLABS_TTS_URL.format(voice_id=vid),
+                headers={"xi-api-key": key, "Accept": "audio/mpeg", "Content-Type": "application/json"},
                 json={
-                    "text": text,
-                    "model_id": model_id,
+                    "text": tts_body,
+                    "model_id": mid,
+                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
                 },
             )
-            response.raise_for_status()
-            audio_bytes = response.content
+            r.raise_for_status()
+            audio = r.content
     except Exception as e:
         logger.warning("ElevenLabs TTS failed for session %s: %s", session_id, e)
         return ""
 
-    if not audio_bytes:
+    if not audio:
         return ""
-
-    await db.save_audio(session_id, audio_bytes)
+    await db.save_audio(session_id, audio)
     return f"/audio/{session_id}"
 
 
 async def run(state: dict) -> dict:
     intake = state["intake"]
-    session_id = state["session_id"]
-    coverage_required = [
-        c for c in state["coverage_requirements"]
-        if c["category"] in ("required", "recommended")
-    ]
+    sid = state["session_id"]
+    risk = state.get("risk_profile") or {}
+    rows = state.get("coverage_requirements") or []
+
+    now = [c for c in rows if c.get("category") in ("required", "recommended")]
+    later = [c for c in rows if c.get("category") == "projected"]
+
+    industry = (risk.get("industry") or (intake.get("description") or "")[:120] or "General business").strip()
+    ctx = (risk.get("reasoning_summary") or "See coverage lists below.").strip()
 
     prompt = USER_PROMPT_TEMPLATE.format(
         business_name=intake["business_name"],
-        coverage_json=json.dumps(coverage_required, indent=2),
+        industry=industry,
+        risk_context=ctx,
+        coverage_json=json.dumps(now, indent=2) if now else "(none listed)",
+        projected_json=json.dumps(later, indent=2) if later else "(none)",
     )
-    summary = await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt)
-    voice_url = await synthesize_speech(session_id, summary)
+    summary = _strip_wrappers(await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt))
+    voice_url = await synthesize_speech(sid, summary)
 
     return {**state, "plain_english_summary": summary, "voice_url": voice_url}
