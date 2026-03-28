@@ -1,40 +1,23 @@
 import SwiftUI
 
-// MARK: - View model
-
 @MainActor
 final class VoiceIntakeViewModel: ObservableObject {
-    enum Field: Int, CaseIterable {
-        case businessName, description, employeeCount, state, annualRevenue
-    }
-
-    @Published var businessName = ""
-    @Published var description = ""
-    @Published var employeeCountText = ""
-    @Published var state = ""
-    @Published var annualRevenueText = ""
-    @Published var currentField: Field = .businessName
-
     @Published var isStartingConv = true
     @Published var convSessionId: String?
     @Published var convStartError: String?
 
     @Published var isSubmitting = false
-    @Published var sessionId: String?
+    @Published var analysisSessionId: String? // Final Session ID from /conv/complete
     @Published var errorMessage: String?
 
-    var progress: Double {
-        Double(currentField.rawValue) / Double(Field.allCases.count - 1)
+    private let liveService = ElevenLabsLiveConversationService()
+
+    var state: ElevenLabsLiveConversationService.ConnectionState {
+        liveService.state
     }
 
-    var canAdvance: Bool {
-        switch currentField {
-        case .businessName: return !businessName.trimmingCharacters(in: .whitespaces).isEmpty
-        case .description: return !description.trimmingCharacters(in: .whitespaces).isEmpty
-        case .employeeCount: return Int(employeeCountText) != nil
-        case .state: return state.count == 2
-        case .annualRevenue: return Double(annualRevenueText.replacingOccurrences(of: ",", with: "")) != nil
-        }
+    var transcript: [ConvTranscriptTurn] {
+        liveService.transcript
     }
 
     func startConversationPhase() async {
@@ -43,40 +26,29 @@ final class VoiceIntakeViewModel: ObservableObject {
         do {
             let r = try await APIService.shared.startConversation()
             convSessionId = r.sessionId
+            try await liveService.connect(signedUrl: r.signedUrl)
         } catch {
-            convStartError =
-                "Conversational intake isn’t available on the server right now. Use the guided questionnaire instead."
+            convStartError = "Conversational intake isn’t available on the server right now. \(error.localizedDescription)"
         }
         isStartingConv = false
     }
 
-    func advance() {
-        guard canAdvance, convSessionId != nil else { return }
-        if currentField == .annualRevenue {
-            Task { await submit() }
-        } else {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                currentField = Field(rawValue: currentField.rawValue + 1)!
-            }
-        }
+    func disconnectAndSubmit() {
+        liveService.disconnect()
+        Task { await submit() }
+    }
+    
+    func abortConversation() {
+        liveService.disconnect()
     }
 
     private func submit() async {
         guard let sid = convSessionId else { return }
         isSubmitting = true
         errorMessage = nil
-        let revenue = Double(annualRevenueText.replacingOccurrences(of: ",", with: "")) ?? 0
-        let intake = IntakeRequest(
-            businessName: businessName,
-            description: description,
-            employeeCount: Int(employeeCountText) ?? 0,
-            state: state.uppercased(),
-            annualRevenue: revenue
-        )
-        let transcript = ElevenLabsConvService.transcript(from: intake)
         do {
-            let response = try await APIService.shared.completeConversation(sessionId: sid, transcript: transcript)
-            sessionId = response.sessionId
+            let response = try await APIService.shared.completeConversation(sessionId: sid, transcript: liveService.transcript)
+            analysisSessionId = response.sessionId
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -84,18 +56,16 @@ final class VoiceIntakeViewModel: ObservableObject {
     }
 }
 
-// MARK: - View
-
 struct VoiceIntakeView: View {
     @EnvironmentObject private var appState: FaroAppState
     @StateObject private var vm = VoiceIntakeViewModel()
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
             if vm.isStartingConv {
                 VStack(spacing: FaroSpacing.md) {
-                    ProgressView()
-                        .tint(FaroPalette.purpleDeep)
+                    ProgressView().tint(FaroPalette.purpleDeep)
                     Text("Preparing conversational session…")
                         .font(FaroType.subheadline())
                         .foregroundStyle(FaroPalette.ink.opacity(0.55))
@@ -105,8 +75,7 @@ struct VoiceIntakeView: View {
                 ContentUnavailableView {
                     Label("Voice intake unavailable", systemImage: "waveform.slash")
                 } description: {
-                    Text(err)
-                        .multilineTextAlignment(.center)
+                    Text(err).multilineTextAlignment(.center)
                 } actions: {
                     NavigationLink {
                         OnboardingView()
@@ -122,7 +91,7 @@ struct VoiceIntakeView: View {
                     .padding(.horizontal)
                 }
             } else {
-                intakeForm
+                liveConversationUI
             }
         }
         .faroCanvasBackground()
@@ -130,119 +99,126 @@ struct VoiceIntakeView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .navigationBarBackButtonHidden(vm.isSubmitting)
         .task {
             await vm.startConversationPhase()
         }
+        .onDisappear {
+            vm.abortConversation()
+        }
         .navigationDestination(isPresented: Binding(
-            get: { vm.sessionId != nil },
-            set: { if !$0 { vm.sessionId = nil } }
+            get: { vm.analysisSessionId != nil },
+            set: { if !$0 { vm.analysisSessionId = nil } }
         )) {
-            if let sessionId = vm.sessionId {
-                AgentTrackerView(sessionId: sessionId, businessName: vm.businessName)
+            if let sessionId = vm.analysisSessionId {
+                AgentTrackerView(sessionId: sessionId, businessName: "Your Business")
             }
         }
-        .onChange(of: vm.sessionId) { _, newId in
+        .onChange(of: vm.analysisSessionId) { _, newId in
             if let id = newId {
-                appState.beginNewAnalysis(sessionId: id, businessName: vm.businessName)
+                appState.beginNewAnalysis(sessionId: id, businessName: "Your Business")
             }
         }
     }
 
-    private var intakeForm: some View {
+    private var liveConversationUI: some View {
         VStack(spacing: 0) {
-            Text(
-                "Answer the same questions as the guided flow. Your answers are sent as a conversation transcript to start the analysis pipeline."
-            )
-            .font(FaroType.caption())
-            .foregroundStyle(FaroPalette.ink.opacity(0.5))
-            .multilineTextAlignment(.leading)
-            .padding(.horizontal)
-            .padding(.top, FaroSpacing.sm)
-
-            ProgressView(value: vm.progress)
-                .tint(FaroPalette.purpleDeep)
-                .padding(.horizontal)
-                .padding(.top, FaroSpacing.lg)
-
             Spacer()
-
-            Group {
-                switch vm.currentField {
-                case .businessName:
-                    QuestionCard(
-                        question: "What's your business called?",
-                        placeholder: "e.g. Sunny Days Daycare",
-                        text: $vm.businessName
-                    )
-                case .description:
-                    QuestionCard(
-                        question: "What does your business do?",
-                        placeholder: "Describe it in your own words — the more detail the better",
-                        text: $vm.description,
-                        isMultiline: true
-                    )
-                case .employeeCount:
-                    QuestionCard(
-                        question: "How many employees do you have?",
-                        placeholder: "12",
-                        text: $vm.employeeCountText,
-                        keyboard: .numberPad
-                    )
-                case .state:
-                    QuestionCard(
-                        question: "Which state do you operate in?",
-                        placeholder: "NJ",
-                        text: $vm.state
-                    )
-                case .annualRevenue:
-                    QuestionCard(
-                        question: "What's your approximate annual revenue?",
-                        placeholder: "800000",
-                        text: $vm.annualRevenueText,
-                        keyboard: .decimalPad
-                    )
+            
+            // Conversation UI
+            VStack(spacing: FaroSpacing.lg) {
+                switch vm.state {
+                case .connecting:
+                    ProgressView().tint(FaroPalette.purpleDeep)
+                    Text("Connecting to Faro...").font(FaroType.headline())
+                case .connected:
+                    ZStack {
+                        Circle()
+                            .fill(FaroPalette.purpleDeep.opacity(0.1))
+                            .frame(width: 150, height: 150)
+                            .scaleEffect(1.2)
+                            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: vm.state == .connected)
+                        
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 40))
+                            .foregroundColor(FaroPalette.purpleDeep)
+                    }
+                    .padding(.vertical, FaroSpacing.xl)
+                    
+                    Text("Listening...")
+                        .font(FaroType.headline())
+                        .foregroundStyle(FaroPalette.purpleDeep)
+                case .disconnected:
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(FaroPalette.purple)
+                        .padding(.vertical, FaroSpacing.xl)
+                    Text("Conversation Ended").font(FaroType.headline())
+                case .error(let msg):
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 50))
+                        .foregroundColor(FaroPalette.danger)
+                        .padding(.vertical, FaroSpacing.xl)
+                    Text("Error: \(msg)").font(FaroType.headline())
                 }
             }
-            .transition(.asymmetric(
-                insertion: .move(edge: .trailing).combined(with: .opacity),
-                removal: .move(edge: .leading).combined(with: .opacity)
-            ))
-
+            .frame(maxWidth: .infinity)
+            
             Spacer()
-
+            
+            // Transcript View
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                    ForEach(Array(vm.transcript.enumerated()), id: \.offset) { _, turn in
+                        HStack {
+                            if turn.role == "user" {
+                                Spacer()
+                                Text(turn.message)
+                                    .padding(12)
+                                    .background(FaroPalette.purpleDeep)
+                                    .foregroundColor(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                            } else {
+                                Text(turn.message)
+                                    .padding(12)
+                                    .background(Color.gray.opacity(0.15))
+                                    .foregroundColor(.primary)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                                Spacer()
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+            }
+            .frame(maxHeight: 250)
+            
             if let error = vm.errorMessage {
                 Text(error)
                     .font(FaroType.caption())
                     .foregroundStyle(FaroPalette.danger)
-                    .padding(.horizontal)
+                    .padding()
             }
 
-            Button(action: vm.advance) {
+            Button(action: vm.disconnectAndSubmit) {
                 Group {
                     if vm.isSubmitting {
-                        ProgressView()
-                            .tint(FaroPalette.onAccent)
+                        ProgressView().tint(FaroPalette.onAccent)
                     } else {
-                        Text(vm.currentField == .annualRevenue ? "Analyze my coverage" : "Continue")
+                        Text("Finish Conversation")
                             .font(FaroType.headline())
                     }
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(vm.canAdvance ? FaroPalette.purpleDeep : FaroPalette.purple.opacity(0.25))
-                .foregroundStyle(vm.canAdvance ? FaroPalette.onAccent : FaroPalette.ink.opacity(0.45))
+                .background(vm.isSubmitting ? FaroPalette.purple.opacity(0.25) : FaroPalette.purpleDeep)
+                .foregroundStyle(vm.isSubmitting ? FaroPalette.ink.opacity(0.45) : FaroPalette.onAccent)
                 .clipShape(RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
             }
-            .disabled(!vm.canAdvance || vm.isSubmitting)
+            .disabled(vm.isSubmitting || vm.state != .connected)
             .padding(.horizontal)
             .padding(.bottom, 40)
+            .padding(.top, FaroSpacing.lg)
         }
     }
-}
-
-#Preview {
-    NavigationStack {
-        VoiceIntakeView()
-    }
-    .environmentObject(FaroAppState())
 }

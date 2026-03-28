@@ -23,10 +23,7 @@ from agent.pipeline import run_pipeline
 
 logger = logging.getLogger(__name__)
 
-try:
-    import agent.elevenlabs_conversation as elevenlabs_conv
-except ImportError:
-    elevenlabs_conv = None
+import agent.elevenlabs_conversation as elevenlabs_conv
 
 # Load backend-local environment variables for local development.
 load_dotenv(Path(__file__).with_name(".env"))
@@ -134,8 +131,6 @@ async def _run_pipeline_task(session_id: str, intake: dict):
 
 @app.post("/conv/start", response_model=ConvStartResponse)
 async def conv_start():
-    if elevenlabs_conv is None:
-        raise HTTPException(503, "Conversational intake is not configured on the server")
     session_id = str(uuid.uuid4())
     # Generate the signed WebRTC URL for this session
     signed_url = await elevenlabs_conv.create_conversation_token(session_id)
@@ -146,8 +141,6 @@ async def conv_start():
 
 @app.post("/conv/complete", response_model=ConvCompleteResponse)
 async def conv_complete(body: ConvCompleteRequest):
-    if elevenlabs_conv is None:
-        raise HTTPException(503, "Conversational intake is not configured on the server")
     session_id = body.session_id
     
     # 1. Ask Gemini to extract the 5 standard fields from the transcript
