@@ -121,8 +121,10 @@ struct AgentTrackerView: View {
             results = fetched
             appState.completeAnalysis(results: fetched)
             navigateToDashboard = true
+        } catch let error as APIError {
+            errorMessage = error.message
         } catch {
-            errorMessage = "Failed to load results. Tap to retry."
+            errorMessage = "Failed to load results: \(error.localizedDescription)"
         }
         isLoadingResults = false
     }

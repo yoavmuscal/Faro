@@ -77,6 +77,12 @@ struct FaroRootView: View {
             .tag(FaroSection.submission)
 
             NavigationStack {
+                summaryRoot
+            }
+            .tabItem { Label(FaroSection.summary.title, systemImage: FaroSection.summary.systemImage) }
+            .tag(FaroSection.summary)
+
+            NavigationStack {
                 FaroSettingsView()
             }
             .tabItem { Label(FaroSection.settings.title, systemImage: FaroSection.settings.systemImage) }
@@ -87,7 +93,9 @@ struct FaroRootView: View {
     }
 
     // MARK: - macOS Sidebar
+    // `List(selection:)` is macOS-only; keep this block out of the iOS compile unit.
 
+    #if os(macOS)
     private var sidebarContent: some View {
         List(selection: $section) {
             Section {
@@ -113,6 +121,7 @@ struct FaroRootView: View {
         .listStyle(.sidebar)
         .frame(minWidth: 220, idealWidth: 240)
     }
+    #endif
 
     // MARK: - Detail
 
