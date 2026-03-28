@@ -12,10 +12,26 @@ actor APIService {
     /// Override via Info.plist key `API_BASE_URL` for local dev vs prod.
     private let baseURL: String = APIConfig.httpBaseURL
 
+    private var accessTokenProvider: (@Sendable () async -> String?)?
+
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         return d
     }()
+
+    func setAccessTokenProvider(_ provider: (@Sendable () async -> String?)?) {
+        accessTokenProvider = provider
+    }
+
+    private func bearerToken() async -> String? {
+        await accessTokenProvider?()
+    }
+
+    private func applyAuth(_ request: inout URLRequest) async {
+        if let token = await bearerToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+    }
 
     // MARK: - POST /intake
 
@@ -24,9 +40,10 @@ actor APIService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(intake)
+        await applyAuth(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        try validate(response)
+        try validate(response, data: data)
         return try decoder.decode(IntakeResponse.self, from: data)
     }
 
@@ -35,9 +52,10 @@ actor APIService {
     func startConversation() async throws -> ConvStartResponse {
         var request = URLRequest(url: URL(string: "\(baseURL)/conv/start")!)
         request.httpMethod = "POST"
+        await applyAuth(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        try validate(response)
+        try validate(response, data: data)
         return try decoder.decode(ConvStartResponse.self, from: data)
     }
 
@@ -45,12 +63,13 @@ actor APIService {
         var request = URLRequest(url: URL(string: "\(baseURL)/conv/complete")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         let payload = ConvCompleteRequest(sessionId: sessionId, transcript: transcript)
         request.httpBody = try JSONEncoder().encode(payload)
+        await applyAuth(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        try validate(response)
+        try validate(response, data: data)
         return try decoder.decode(ConvCompleteResponse.self, from: data)
     }
 
@@ -63,7 +82,9 @@ actor APIService {
         let delayNs: UInt64 = 1_000_000_000 // 1s
 
         for attempt in 0..<maxAttempts {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            var request = URLRequest(url: url)
+            await applyAuth(&request)
+            let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
                 throw URLError(.badServerResponse)
             }
@@ -78,7 +99,6 @@ actor APIService {
                     )
                 }
             case 202:
-                // Race: WebSocket shows all steps complete before `pipeline_status` is saved.
                 if attempt == maxAttempts - 1 {
                     throw APIError(
                         message: "Results are still finishing on the server. Pull to retry or try again in a few seconds."
@@ -87,6 +107,10 @@ actor APIService {
                 try await Task.sleep(nanoseconds: delayNs)
             case 404:
                 throw APIError(message: "Session not found. Start a new analysis.")
+            case 401:
+                throw APIError(
+                    message: Self.parseFastAPIDetail(data) ?? "Sign in required or your session expired."
+                )
             case 500:
                 throw APIError(message: Self.parseFastAPIDetail(data) ?? "Analysis failed on the server.")
             default:
@@ -100,16 +124,25 @@ actor APIService {
     // MARK: - GET /status/{session_id}
 
     func fetchStatus(sessionId: String) async throws -> StatusResponse {
-        let url = URL(string: "\(baseURL)/status/\(sessionId)")!
-        let (data, response) = try await URLSession.shared.data(from: url)
-        try validate(response)
+        var request = URLRequest(url: URL(string: "\(baseURL)/status/\(sessionId)")!)
+        await applyAuth(&request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response, data: data)
         return try decoder.decode(StatusResponse.self, from: data)
     }
 
     // MARK: - Helpers
 
-    private func validate(_ response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+    private func validate(_ response: URLResponse, data: Data) throws {
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        if http.statusCode == 401 {
+            throw APIError(
+                message: Self.parseFastAPIDetail(data) ?? "Sign in required or your session expired."
+            )
+        }
+        guard (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }
     }

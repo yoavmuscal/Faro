@@ -20,4 +20,28 @@ enum APIConfig {
         }
         return "ws://" + http
     }
+
+    // MARK: - Auth0 (optional)
+
+    static var auth0ClientId: String? {
+        string(forInfoKey: "AUTH0_CLIENT_ID")
+    }
+
+    static var auth0Domain: String? {
+        string(forInfoKey: "AUTH0_DOMAIN")
+    }
+
+    static var auth0Audience: String? {
+        string(forInfoKey: "AUTH0_AUDIENCE")
+    }
+
+    static var isAuth0Configured: Bool {
+        auth0ClientId != nil && auth0Domain != nil && auth0Audience != nil
+    }
+
+    private static func string(forInfoKey key: String) -> String? {
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }

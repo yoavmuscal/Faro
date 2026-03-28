@@ -15,9 +15,13 @@ final class WebSocketService: NSObject, ObservableObject {
         self.baseURL = baseURL ?? APIConfig.webSocketBaseURL
     }
 
-    func connect() {
+    func connect(accessToken: String? = nil) {
         let url = URL(string: "\(baseURL)/ws/\(sessionId)")!
-        task = URLSession.shared.webSocketTask(with: url)
+        var request = URLRequest(url: url)
+        if let accessToken {
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
+        task = URLSession.shared.webSocketTask(with: request)
         task?.resume()
         isConnected = true
         receiveNext()

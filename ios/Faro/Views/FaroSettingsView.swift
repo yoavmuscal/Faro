@@ -2,9 +2,11 @@ import SwiftUI
 
 struct FaroSettingsView: View {
     @EnvironmentObject private var appState: FaroAppState
+    @EnvironmentObject private var authManager: AuthManager
 
     var body: some View {
         Form {
+            auth0Section
             profileSection
             analysisSection
             aboutSection
@@ -18,6 +20,43 @@ struct FaroSettingsView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+    }
+
+    // MARK: - Auth0
+
+    private var auth0Section: some View {
+        Group {
+            if authManager.isAuthConfigured {
+                Section("Auth0") {
+                    if authManager.isLoggedIn {
+                        Label("Signed in", systemImage: "checkmark.seal.fill")
+                            .foregroundStyle(FaroPalette.success)
+                        Button("Sign out of Auth0") {
+                            Task { await authManager.logout() }
+                        }
+                        .font(FaroType.subheadline(.medium))
+                    } else {
+                        Button {
+                            Task { await authManager.login() }
+                        } label: {
+                            Label("Sign in with Auth0", systemImage: "person.badge.key.fill")
+                                .font(FaroType.headline())
+                        }
+                        .tint(FaroPalette.purpleDeep)
+
+                        Text("Required when the API enforces Auth0 (see backend AUTH0_DOMAIN and AUTH0_AUDIENCE).")
+                            .font(FaroType.caption())
+                            .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                    }
+
+                    if let err = authManager.lastError, !err.isEmpty {
+                        Text(err)
+                            .font(FaroType.caption())
+                            .foregroundStyle(FaroPalette.danger)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Profile
@@ -149,7 +188,10 @@ struct FaroSettingsView: View {
     private var signOutSection: some View {
         Section {
             Button(role: .destructive) {
-                appState.signOut()
+                Task {
+                    await authManager.logout()
+                    appState.signOut()
+                }
             } label: {
                 HStack {
                     Spacer()
@@ -176,4 +218,5 @@ struct FaroSettingsView: View {
         FaroSettingsView()
     }
     .environmentObject(FaroAppState())
+    .environmentObject(AuthManager())
 }

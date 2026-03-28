@@ -442,4 +442,5 @@ struct AnalysisPlaceholderView: View {
 #Preview {
     FaroRootView()
         .environmentObject(FaroAppState())
+        .environmentObject(AuthManager())
 }

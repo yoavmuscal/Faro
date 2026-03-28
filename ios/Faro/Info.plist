@@ -4,6 +4,25 @@
 <dict>
 	<key>API_BASE_URL</key>
 	<string>http://localhost:8000</string>
+	<key>AUTH0_CLIENT_ID</key>
+	<string></string>
+	<key>AUTH0_DOMAIN</key>
+	<string></string>
+	<key>AUTH0_AUDIENCE</key>
+	<string></string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>None</string>
+			<key>CFBundleURLName</key>
+			<string>auth0</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(PRODUCT_BUNDLE_IDENTIFIER).auth0</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

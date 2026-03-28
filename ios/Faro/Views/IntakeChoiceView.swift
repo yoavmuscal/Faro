@@ -3,6 +3,7 @@ import SwiftUI
 /// Entry point for the Analyze tab: structured form, voice intake, or quick demo.
 struct IntakeChoiceView: View {
     @EnvironmentObject private var appState: FaroAppState
+    @EnvironmentObject private var authManager: AuthManager
     @State private var isDemoLoading = false
     @State private var demoSessionId: String?
     @State private var demoError: String?
@@ -20,6 +21,21 @@ struct IntakeChoiceView: View {
                         .font(FaroType.subheadline())
                         .foregroundStyle(FaroPalette.ink.opacity(0.55))
                         .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if authManager.isAuthConfigured && !authManager.isLoggedIn {
+                    VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                        Label("Sign in to continue", systemImage: "person.badge.key.fill")
+                            .font(FaroType.headline())
+                            .foregroundStyle(FaroPalette.ink)
+                        Text("Your Faro API expects an Auth0 access token. Open Settings, sign in with Auth0, then run an analysis.")
+                            .font(FaroType.caption())
+                            .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(FaroSpacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .faroGlassCard(cornerRadius: FaroRadius.lg, material: .regularMaterial)
                 }
 
                 VStack(spacing: FaroSpacing.md) {
@@ -166,4 +182,5 @@ struct IntakeChoiceView: View {
         IntakeChoiceView()
     }
     .environmentObject(FaroAppState())
+    .environmentObject(AuthManager())
 }

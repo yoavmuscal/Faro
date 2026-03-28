@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AgentTrackerView: View {
     @EnvironmentObject private var appState: FaroAppState
+    @EnvironmentObject private var authManager: AuthManager
     let sessionId: String
     let businessName: String
 
@@ -109,7 +110,12 @@ struct AgentTrackerView: View {
                 CoverageDashboardView(results: results, sessionId: sessionId, businessName: businessName)
             }
         }
-        .onAppear { ws.connect() }
+        .onAppear {
+            Task {
+                let token = await authManager.accessToken()
+                ws.connect(accessToken: token)
+            }
+        }
         .onDisappear { ws.disconnect() }
     }
 
@@ -237,4 +243,5 @@ struct StepCard: View {
         AgentTrackerView(sessionId: "preview-session")
     }
     .environmentObject(FaroAppState())
+    .environmentObject(AuthManager())
 }

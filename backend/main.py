@@ -5,10 +5,12 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from dotenv import load_dotenv
+
+from auth import ensure_websocket_allowed, require_auth
 
 from models import (
     IntakeRequest, IntakeResponse,
@@ -39,6 +41,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Faro Insurance API", lifespan=lifespan)
 PIPELINE_TIMEOUT_SECONDS = 180
 
+_api_auth = [Depends(require_auth)]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # tighten before production
@@ -52,7 +56,7 @@ _ws_connections: dict[str, WebSocket] = {}
 
 # ── POST /intake ──────────────────────────────────────────────────────────────
 
-@app.post("/intake", response_model=IntakeResponse)
+@app.post("/intake", response_model=IntakeResponse, dependencies=_api_auth)
 async def intake(body: IntakeRequest):
     session_id = str(uuid.uuid4())
     await db.save_session(session_id, {
@@ -129,7 +133,7 @@ async def _run_pipeline_task(session_id: str, intake: dict):
 
 # ── POST /conv/start ──────────────────────────────────────────────────────────
 
-@app.post("/conv/start", response_model=ConvStartResponse)
+@app.post("/conv/start", response_model=ConvStartResponse, dependencies=_api_auth)
 async def conv_start():
     session_id = str(uuid.uuid4())
     # Generate the signed WebRTC URL for this session
@@ -139,7 +143,7 @@ async def conv_start():
 
 # ── POST /conv/complete ───────────────────────────────────────────────────────
 
-@app.post("/conv/complete", response_model=ConvCompleteResponse)
+@app.post("/conv/complete", response_model=ConvCompleteResponse, dependencies=_api_auth)
 async def conv_complete(body: ConvCompleteRequest):
     session_id = body.session_id
 
@@ -186,6 +190,8 @@ async def conv_complete(body: ConvCompleteRequest):
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
+    if not await ensure_websocket_allowed(websocket):
+        return
     _ws_connections[session_id] = websocket
 
     # Replay any steps already completed (race condition guard)
@@ -206,7 +212,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
 # ── GET /results/{session_id} ─────────────────────────────────────────────────
 
-@app.get("/results/{session_id}", response_model=ResultsResponse)
+@app.get("/results/{session_id}", response_model=ResultsResponse, dependencies=_api_auth)
 async def get_results(session_id: str):
     session = await db.get_session(session_id)
     if not session:
@@ -233,7 +239,7 @@ async def get_results(session_id: str):
 
 # ── GET /status/{session_id} ──────────────────────────────────────────────────
 
-@app.get("/status/{session_id}", response_model=StatusResponse)
+@app.get("/status/{session_id}", response_model=StatusResponse, dependencies=_api_auth)
 async def get_status(session_id: str):
     session = await db.get_session(session_id)
     if not session:
@@ -270,7 +276,7 @@ async def get_status(session_id: str):
 
 # ── GET /audio/{session_id} ──────────────────────────────────────────────────
 
-@app.get("/audio/{session_id}")
+@app.get("/audio/{session_id}", dependencies=_api_auth)
 async def get_audio(session_id: str):
     audio_bytes = await db.get_audio(session_id)
     if not audio_bytes:
