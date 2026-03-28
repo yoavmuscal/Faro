@@ -7,7 +7,7 @@ from typing import Callable, Awaitable
 from langgraph.graph import StateGraph, END
 
 from .steps import risk_profiler, coverage_mapper, submission_builder, explainer
-from ..models import AgentStep, StepStatus
+from models import AgentStep, StepStatus
 
 
 # ── Graph node wrappers ───────────────────────────────────────────────────────

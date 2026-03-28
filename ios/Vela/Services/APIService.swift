@@ -3,11 +3,8 @@ import Foundation
 actor APIService {
     static let shared = APIService()
 
-    private let baseURL: String = {
-        // Override via Info.plist key "API_BASE_URL" for local dev vs prod
-        Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String
-            ?? "http://localhost:8000"
-    }()
+    /// Override via Info.plist key `API_BASE_URL` for local dev vs prod.
+    private let baseURL: String = APIConfig.httpBaseURL
 
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()

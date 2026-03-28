@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 @MainActor
@@ -9,9 +10,9 @@ final class WebSocketService: NSObject, ObservableObject {
     private let sessionId: String
     private let baseURL: String
 
-    init(sessionId: String, baseURL: String = "ws://localhost:8000") {
+    init(sessionId: String, baseURL: String? = nil) {
         self.sessionId = sessionId
-        self.baseURL = baseURL
+        self.baseURL = baseURL ?? APIConfig.webSocketBaseURL
     }
 
     func connect() {

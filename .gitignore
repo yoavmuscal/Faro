@@ -55,6 +55,7 @@ xcuserdata/
 *.swp
 *.swo
 *.claude
+.claude/
 
 # AWS / Serverless
 .serverless/
