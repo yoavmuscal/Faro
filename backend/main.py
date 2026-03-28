@@ -114,7 +114,6 @@ async def get_results(session_id: str):
             estimated_premium_low=c.get("estimated_premium_low", 0),
             estimated_premium_high=c.get("estimated_premium_high", 0),
             confidence=c.get("confidence", 0.8),
-            required=c.get("category") == "required",
             category=CoverageCategory(c.get("category", "recommended")),
             trigger_event=c.get("trigger_event"),
         )

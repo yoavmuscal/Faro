@@ -64,7 +64,7 @@ struct CoverageDashboardView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Your coverage")
                         .font(.title).fontWeight(.bold)
-                    Text("\(sortedCoverage.filter { $0.required }.count) required · \(sortedCoverage.filter { $0.category == .recommended }.count) recommended")
+                    Text("\(sortedCoverage.filter { $0.category == .required }.count) required · \(sortedCoverage.filter { $0.category == .recommended }.count) recommended · \(sortedCoverage.filter { $0.category == .projected }.count) projected")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -247,13 +247,26 @@ struct ShareSheet: UIViewControllerRepresentable {
                         type: "General Liability",
                         description: "Covers third-party bodily injury and property damage claims.",
                         estimatedPremiumLow: 800, estimatedPremiumHigh: 1500,
-                        confidence: 0.95, required: true, category: .required, triggerEvent: nil
+                        confidence: 0.95, category: .required, triggerEvent: nil
                     ),
                     CoverageOption(
                         type: "Workers Compensation",
                         description: "Required by NJ law for any business with employees.",
                         estimatedPremiumLow: 2000, estimatedPremiumHigh: 4000,
-                        confidence: 0.99, required: true, category: .required, triggerEvent: nil
+                        confidence: 0.99, category: .required, triggerEvent: nil
+                    ),
+                    CoverageOption(
+                        type: "Cyber Liability",
+                        description: "Covers data breaches, ransomware, and regulatory fines.",
+                        estimatedPremiumLow: 1200, estimatedPremiumHigh: 3000,
+                        confidence: 0.80, category: .recommended, triggerEvent: nil
+                    ),
+                    CoverageOption(
+                        type: "Employment Practices Liability (EPLI)",
+                        description: "Protects against claims of wrongful termination, discrimination, and harassment.",
+                        estimatedPremiumLow: 1500, estimatedPremiumHigh: 4000,
+                        confidence: 0.72, category: .projected,
+                        triggerEvent: "Trigger: Headcount projected to exceed 15 employees"
                     ),
                 ],
                 submissionPacketUrl: "",

@@ -59,14 +59,16 @@ struct CoverageOption: Codable, Identifiable {
     let estimatedPremiumLow: Double
     let estimatedPremiumHigh: Double
     let confidence: Double
-    let required: Bool
     let category: CoverageCategory
     let triggerEvent: String?
 
     var id: String { type }
 
+    /// Convenience so call-sites don't need to inspect `category` directly.
+    var isRequired: Bool { category == .required }
+
     enum CodingKeys: String, CodingKey {
-        case type, description, required, category, confidence
+        case type, description, category, confidence
         case estimatedPremiumLow = "estimated_premium_low"
         case estimatedPremiumHigh = "estimated_premium_high"
         case triggerEvent = "trigger_event"

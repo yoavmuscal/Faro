@@ -52,9 +52,8 @@ class CoverageOption(BaseModel):
     estimated_premium_low: float
     estimated_premium_high: float
     confidence: float = Field(ge=0.0, le=1.0)
-    required: bool
     category: CoverageCategory
-    trigger_event: Optional[str] = None  # for "projected" coverage
+    trigger_event: Optional[str] = None  # only set for "projected" coverage
 
 
 class ResultsResponse(BaseModel):

@@ -57,6 +57,13 @@ Base premium estimates on typical market rates for this business size and state.
 
 
 async def run(state: dict) -> dict:
+    # SAFETY: The raw LLM response is parsed as JSON and stored directly in
+    # pipeline state.  Before this node's output is surfaced to the client via
+    # GET /results, the main.py endpoint re-validates every item through the
+    # CoverageOption Pydantic model, which enforces field types, the
+    # CoverageCategory enum boundary, confidence range [0, 1], and strips any
+    # unexpected keys.  Do NOT bypass that validation layer when consuming
+    # `coverage_requirements` elsewhere in the pipeline.
     intake = state["intake"]
     prompt = USER_PROMPT_TEMPLATE.format(
         risk_profile_json=json.dumps(state["risk_profile"], indent=2),
