@@ -136,6 +136,19 @@ struct CoverageDashboardView: View {
                 CoverageDetailSheet(option: option)
             }
         }
+        #if os(iOS)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                pdfToolbarButtons
+            }
+        }
+        #elseif os(macOS)
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                pdfToolbarButtons
+            }
+        }
+        #endif
     }
 
     // MARK: - Sections
@@ -263,6 +276,23 @@ struct CoverageDashboardView: View {
             }
         }
         .padding(.horizontal, FaroSpacing.md)
+    }
+
+    @ViewBuilder
+    private var pdfToolbarButtons: some View {
+        Button {
+            Task { await exportPDF() }
+        } label: {
+            Label("Export PDF", systemImage: "arrow.up.doc.fill")
+        }
+        .disabled(vm.isGeneratingPDF)
+
+        if let url = pdfURL {
+            ShareLink(item: url, preview: SharePreview("Faro export", image: Image(systemName: "doc.fill"))) {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .accessibilityLabel("Share PDF")
+        }
     }
 
     private var actionButtons: some View {
