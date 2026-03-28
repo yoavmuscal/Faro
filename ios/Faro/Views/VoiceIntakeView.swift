@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 @MainActor
 final class VoiceIntakeViewModel: ObservableObject {
@@ -10,7 +11,8 @@ final class VoiceIntakeViewModel: ObservableObject {
     @Published var analysisSessionId: String? // Final Session ID from /conv/complete
     @Published var errorMessage: String?
 
-    private let liveService = ElevenLabsLiveConversationService()
+    let liveService = ElevenLabsLiveConversationService()
+    private var bag = Set<AnyCancellable>()
 
     var state: ElevenLabsLiveConversationService.ConnectionState {
         liveService.state
@@ -18,6 +20,19 @@ final class VoiceIntakeViewModel: ObservableObject {
 
     var transcript: [ConvTranscriptTurn] {
         liveService.transcript
+    }
+
+    /// True once the user has spoken at least one turn — required before submitting.
+    var hasUserTurns: Bool {
+        transcript.contains { $0.role == "user" }
+    }
+
+    init() {
+        // Propagate liveService's @Published changes into this ViewModel so SwiftUI re-renders.
+        liveService.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &bag)
     }
 
     func startConversationPhase() async {
@@ -200,6 +215,16 @@ struct VoiceIntakeView: View {
                     .padding()
             }
 
+            let canFinish = vm.state == .connected && vm.hasUserTurns && !vm.isSubmitting
+
+            if vm.state == .connected && !vm.hasUserTurns {
+                Text("Speak to Faro — the button unlocks once you've responded.")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+
             Button(action: vm.disconnectAndSubmit) {
                 Group {
                     if vm.isSubmitting {
@@ -211,11 +236,11 @@ struct VoiceIntakeView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(vm.isSubmitting ? FaroPalette.purple.opacity(0.25) : FaroPalette.purpleDeep)
-                .foregroundStyle(vm.isSubmitting ? FaroPalette.ink.opacity(0.45) : FaroPalette.onAccent)
+                .background(canFinish ? FaroPalette.purpleDeep : FaroPalette.purple.opacity(0.25))
+                .foregroundStyle(canFinish ? FaroPalette.onAccent : FaroPalette.ink.opacity(0.45))
                 .clipShape(RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
             }
-            .disabled(vm.isSubmitting || vm.state != .connected)
+            .disabled(!canFinish)
             .padding(.horizontal)
             .padding(.bottom, 40)
             .padding(.top, FaroSpacing.lg)

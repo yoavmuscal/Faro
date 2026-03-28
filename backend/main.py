@@ -142,7 +142,15 @@ async def conv_start():
 @app.post("/conv/complete", response_model=ConvCompleteResponse)
 async def conv_complete(body: ConvCompleteRequest):
     session_id = body.session_id
-    
+
+    # Require at least one real user turn before running the pipeline.
+    user_turns = [t for t in body.transcript if t.role == "user"]
+    if not user_turns:
+        raise HTTPException(
+            status_code=422,
+            detail="No user speech found in transcript. Please complete the voice conversation first."
+        )
+
     # 1. Ask Gemini to extract the 5 standard fields from the transcript
     raw_intake_dict = await elevenlabs_conv.extract_intake_from_transcript(body.transcript)
     

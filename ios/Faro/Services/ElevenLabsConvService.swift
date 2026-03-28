@@ -53,8 +53,19 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     private static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
     override init() {
+        // Default to 16 kHz Int16 PCM immediately so the agent's first-message audio
+        // (which can arrive before conversation_initiation_metadata is processed) is never dropped.
+        playbackPCMFormat = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: 16_000,
+            channels: 1,
+            interleaved: true
+        )
         super.init()
         audioEngine.attach(playerNode)
+        if let fmt = playbackPCMFormat {
+            audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: fmt)
+        }
     }
 
     func connect(signedUrl: String) async throws {
