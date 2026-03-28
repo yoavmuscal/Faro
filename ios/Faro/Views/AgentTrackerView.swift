@@ -117,15 +117,11 @@ struct AgentTrackerView: View {
             }
         }
         .onAppear {
-<<<<<<< HEAD
-            Task {
+            Task { @MainActor in
                 let token = await authManager.accessToken()
                 ws.connect(accessToken: token)
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { appeared = true }
             }
-=======
-            ws.connect()
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { appeared = true }
->>>>>>> e52b147b11078088ed646e8a2ee256e102628758
         }
         .onDisappear { ws.disconnect() }
     }
