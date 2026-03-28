@@ -30,35 +30,10 @@ Keep it under 200 words. No bullet points — flowing prose that reads naturally
 This text will be converted to speech."""
 
 
-ELEVENLABS_VOICE_ID = "pNInz6obpgDQGcFmaJgB"  # "Adam" — professional, clear
-
-
 async def synthesize_speech(session_id: str, text: str) -> str:
-    """Send text to ElevenLabs, store audio in MongoDB, return /audio/{session_id} URL."""
-    import database as db
-
-    api_key = os.environ.get("ELEVENLABS_API_KEY", "")
-    if not api_key:
-        return ""
-
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
-    headers = {
-        "xi-api-key": api_key,
-        "Content-Type": "application/json",
-        "Accept": "audio/mpeg",
-    }
-    payload = {
-        "text": text,
-        "model_id": "eleven_monolingual_v1",
-        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-    }
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-
-    await db.save_audio(session_id, resp.content)
-    return f"/audio/{session_id}"
+    """Mock audio synthesis since ElevenLabs is disabled."""
+    # We return an empty string so the iOS app knows there's no audio to play, bypassing DB/API.
+    return ""
 
 
 async def run(state: dict) -> dict:
