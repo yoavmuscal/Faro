@@ -57,6 +57,7 @@ struct CoverageDashboardView: View {
     @State private var selectedIndex = 0
     @State private var pdfURL: URL?
     @State private var showCoverageDetail: CoverageOption?
+    @State private var appeared = false
 
     init(results: ResultsResponse, sessionId: String, businessName: String = "Business") {
         self.results = results
@@ -101,13 +102,19 @@ struct CoverageDashboardView: View {
         ScrollView {
             VStack(spacing: FaroSpacing.lg) {
                 headerSection
+                    .faroStaggerIn(appeared: appeared, delay: 0)
+
                 overviewRow
+                    .faroStaggerIn(appeared: appeared, delay: 0.05)
+
                 premiumBarChart
                     .padding(.horizontal, FaroSpacing.md)
+                    .faroStaggerIn(appeared: appeared, delay: 0.1)
 
                 if !categoryChartData.isEmpty {
                     coverageMixChart
                         .padding(.horizontal, FaroSpacing.md)
+                        .faroStaggerIn(appeared: appeared, delay: 0.15)
                 }
 
                 Text("Coverage Options")
@@ -115,11 +122,14 @@ struct CoverageDashboardView: View {
                     .foregroundStyle(FaroPalette.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, FaroSpacing.md)
+                    .faroStaggerIn(appeared: appeared, delay: 0.2)
 
                 coverageList(sortedCoverage: sortedCoverage)
+                    .faroStaggerIn(appeared: appeared, delay: 0.25)
 
                 actionButtons
                     .padding(.horizontal, FaroSpacing.md)
+                    .faroStaggerIn(appeared: appeared, delay: 0.3)
 
                 Spacer(minLength: 40)
             }
@@ -130,7 +140,10 @@ struct CoverageDashboardView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .onAppear { WidgetDataWriter.update(from: results, businessName: businessName) }
+        .onAppear {
+            WidgetDataWriter.update(from: results, businessName: businessName)
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { appeared = true }
+        }
         .sheet(item: $showCoverageDetail) { option in
             NavigationStack {
                 CoverageDetailSheet(option: option)
@@ -155,12 +168,19 @@ struct CoverageDashboardView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: FaroSpacing.xs) {
-            Text("Your coverage")
+            Text(businessName.isEmpty ? "Your Coverage" : "\(businessName)")
                 .font(FaroType.title())
                 .foregroundStyle(FaroPalette.ink)
-            Text("\(sortedCoverage.filter { $0.category == .required }.count) required · \(sortedCoverage.filter { $0.category == .recommended }.count) recommended · \(sortedCoverage.filter { $0.category == .projected }.count) projected")
-                .font(FaroType.subheadline())
-                .foregroundStyle(FaroPalette.ink.opacity(0.55))
+
+            HStack(spacing: FaroSpacing.sm) {
+                let req = sortedCoverage.filter { $0.category == .required }.count
+                let rec = sortedCoverage.filter { $0.category == .recommended }.count
+                let proj = sortedCoverage.filter { $0.category == .projected }.count
+
+                if req > 0 { TagPill(text: "\(req) required", icon: "exclamationmark.circle.fill", tint: FaroPalette.danger) }
+                if rec > 0 { TagPill(text: "\(rec) recommended", icon: "star.fill", tint: FaroPalette.warning) }
+                if proj > 0 { TagPill(text: "\(proj) projected", icon: "arrow.up.right", tint: FaroPalette.purple) }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, FaroSpacing.md)
@@ -181,7 +201,7 @@ struct CoverageDashboardView: View {
                 tint: FaroPalette.success
             )
             StatCard(
-                title: "Avg Confidence",
+                title: "Confidence",
                 value: "\(avgConfidencePercent)%",
                 icon: "chart.bar.fill",
                 tint: FaroPalette.info
@@ -202,7 +222,7 @@ struct CoverageDashboardView: View {
                     y: .value("Type", option.type)
                 )
                 .foregroundStyle(categoryTint(option.category).gradient)
-                .cornerRadius(6)
+                .cornerRadius(8)
                 .annotation(position: .trailing) {
                     Text("$\(Int(option.premiumMidpoint).formatted())")
                         .font(FaroType.caption2())
@@ -232,19 +252,20 @@ struct CoverageDashboardView: View {
                 Chart(categoryChartData) { slice in
                     SectorMark(
                         angle: .value("Policies", slice.count),
-                        innerRadius: .ratio(0.52),
-                        angularInset: 1.5
+                        innerRadius: .ratio(0.55),
+                        angularInset: 2
                     )
-                    .foregroundStyle(categoryTint(slice.category))
+                    .foregroundStyle(categoryTint(slice.category).gradient)
+                    .cornerRadius(4)
                 }
                 .frame(width: 140, height: 140)
 
                 VStack(alignment: .leading, spacing: FaroSpacing.sm) {
                     ForEach(categoryChartData) { slice in
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(categoryTint(slice.category))
-                                .frame(width: 10, height: 10)
+                        HStack(spacing: 8) {
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .fill(categoryTint(slice.category).gradient)
+                                .frame(width: 12, height: 12)
                             VStack(alignment: .leading) {
                                 Text(slice.category.label)
                                     .font(FaroType.caption(.semibold))
@@ -272,7 +293,7 @@ struct CoverageDashboardView: View {
                 } label: {
                     CoverageListRow(option: option)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.faroScale)
             }
         }
         .padding(.horizontal, FaroSpacing.md)
@@ -307,10 +328,8 @@ struct CoverageDashboardView: View {
                 .font(FaroType.headline())
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(FaroPalette.purpleDeep)
-                .foregroundStyle(FaroPalette.onAccent)
-                .clipShape(RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
             }
+            .buttonStyle(.faroGradient)
             .disabled(results.voiceSummaryUrl.isEmpty)
 
             Button {
@@ -382,25 +401,35 @@ struct CoverageListRow: View {
 
     var body: some View {
         HStack(spacing: FaroSpacing.sm + 2) {
-            Circle()
-                .fill(categoryColor)
-                .frame(width: 10, height: 10)
+            RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                .fill(categoryColor.gradient)
+                .frame(width: 4, height: 38)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(option.type)
                     .font(FaroType.subheadline(.semibold))
                     .foregroundStyle(FaroPalette.ink)
-                Text(option.description)
-                    .font(FaroType.caption())
-                    .foregroundStyle(FaroPalette.ink.opacity(0.55))
-                    .lineLimit(2)
+
+                HStack(spacing: 6) {
+                    Text(categoryLabel)
+                        .font(FaroType.caption2(.bold))
+                        .foregroundStyle(categoryColor)
+
+                    Text("·")
+                        .foregroundStyle(FaroPalette.ink.opacity(0.3))
+
+                    Text(option.description)
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: 3) {
                 Text("$\(Int(option.estimatedPremiumLow).formatted())–$\(Int(option.estimatedPremiumHigh).formatted())")
-                    .font(FaroType.caption(.semibold))
+                    .font(FaroType.caption(.bold))
                     .foregroundStyle(FaroPalette.ink)
                 HStack(spacing: 3) {
                     Circle().fill(confidenceColor).frame(width: 6, height: 6)
@@ -424,6 +453,7 @@ struct CoverageListRow: View {
 struct CoverageDetailSheet: View {
     let option: CoverageOption
     @Environment(\.dismiss) private var dismiss
+    @State private var appeared = false
 
     private var categoryColor: Color {
         switch option.category {
@@ -468,12 +498,14 @@ struct CoverageDetailSheet: View {
                         .font(FaroType.title2())
                         .foregroundStyle(FaroPalette.ink)
                 }
+                .faroStaggerIn(appeared: appeared, delay: 0)
 
                 Text(option.description)
                     .font(FaroType.body())
                     .foregroundStyle(FaroPalette.ink.opacity(0.75))
                     .fixedSize(horizontal: false, vertical: true)
                     .lineSpacing(3)
+                    .faroStaggerIn(appeared: appeared, delay: 0.05)
 
                 VStack(alignment: .leading, spacing: FaroSpacing.sm) {
                     Text("Estimated Annual Premium")
@@ -511,6 +543,7 @@ struct CoverageDetailSheet: View {
                     .padding(FaroSpacing.md)
                     .faroGlassCard(cornerRadius: FaroRadius.lg)
                 }
+                .faroStaggerIn(appeared: appeared, delay: 0.1)
 
                 if let trigger = option.triggerEvent {
                     VStack(alignment: .leading, spacing: FaroSpacing.xs) {
@@ -529,6 +562,7 @@ struct CoverageDetailSheet: View {
                         .background(FaroPalette.purple.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous))
                     }
+                    .faroStaggerIn(appeared: appeared, delay: 0.15)
                 }
 
                 Spacer(minLength: 40)
@@ -545,6 +579,9 @@ struct CoverageDetailSheet: View {
                 Button("Done") { dismiss() }
             }
         }
+        .onAppear {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { appeared = true }
+        }
     }
 }
 
@@ -557,10 +594,18 @@ struct StatCard: View {
     let tint: Color
 
     var body: some View {
-        VStack(spacing: FaroSpacing.xs) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(tint)
+        VStack(spacing: FaroSpacing.sm) {
+            ZStack {
+                Circle()
+                    .fill(tint.gradient)
+                    .frame(width: 36, height: 36)
+                    .shadow(color: tint.opacity(0.25), radius: 8, y: 2)
+
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+
             Text(value)
                 .font(FaroType.subheadline(.bold))
                 .foregroundStyle(FaroPalette.ink)
@@ -571,8 +616,8 @@ struct StatCard: View {
                 .foregroundStyle(FaroPalette.ink.opacity(0.5))
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, FaroSpacing.md)
-        .faroGlassCard(cornerRadius: FaroRadius.lg, material: .ultraThinMaterial)
+        .padding(.vertical, FaroSpacing.md + 4)
+        .faroGlassCard(cornerRadius: FaroRadius.xl, material: .ultraThinMaterial)
     }
 }
 
@@ -609,7 +654,8 @@ struct FaroGlassProminentButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
                     .strokeBorder(FaroPalette.glassStroke, lineWidth: 1)
             )
-            .opacity(configuration.isPressed ? 0.92 : 1)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 

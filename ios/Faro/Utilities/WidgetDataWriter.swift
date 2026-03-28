@@ -7,18 +7,38 @@ import WidgetKit
 enum WidgetDataWriter {
     private static let suiteName = "group.com.faro.shared"
     private static let snapshotKey = "coverage_snapshot"
+    private static let totalPipelineSteps = 4
+
+    private enum WidgetDestination: String, Codable {
+        case analyze
+        case coverage
+        case summary
+        case submission
+    }
+
+    private struct WidgetCoverageLine: Codable {
+        let title: String
+        let category: String
+        let triggerEvent: String?
+    }
 
     private struct WidgetCoverageSnapshot: Codable {
         let businessName: String
         let status: CoverageStatus
         let headline: String
         let message: String
+        let isInProgress: Bool
+        let completedSteps: Int
+        let totalSteps: Int
         let nextRenewalDays: Int?
         let policyCount: Int
         let requiredCount: Int
         let recommendedCount: Int
         let projectedCount: Int
         let topCoverageType: String?
+        let nextActionTitle: String
+        let destination: WidgetDestination
+        let coverageLines: [WidgetCoverageLine]
         let premiumLow: Double
         let premiumHigh: Double
         let averageConfidence: Double
@@ -39,6 +59,44 @@ enum WidgetDataWriter {
         #if os(iOS)
         WidgetCenter.shared.reloadAllTimelines()
         #endif
+    }
+
+    static func beginAnalysis(businessName: String) {
+        let trimmedName = businessName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = trimmedName.isEmpty ? "Your Business" : trimmedName
+
+        writeSnapshot(
+            WidgetCoverageSnapshot(
+                businessName: displayName,
+                status: .unknown,
+                headline: "Analysis in progress",
+                message: "Faro is reasoning through coverage options",
+                isInProgress: true,
+                completedSteps: 0,
+                totalSteps: totalPipelineSteps,
+                nextRenewalDays: nil,
+                policyCount: 0,
+                requiredCount: 0,
+                recommendedCount: 0,
+                projectedCount: 0,
+                topCoverageType: nil,
+                nextActionTitle: "Open analysis",
+                destination: .analyze,
+                coverageLines: [],
+                premiumLow: 0,
+                premiumHigh: 0,
+                averageConfidence: 0,
+                updatedAt: Date().timeIntervalSince1970
+            )
+        )
+
+        update(
+            businessName: displayName,
+            status: .unknown,
+            message: "Analysis in progress",
+            nextRenewalDays: nil,
+            policyCount: 0
+        )
     }
 
     static func clear() {
@@ -66,6 +124,8 @@ enum WidgetDataWriter {
         let status: CoverageStatus
         let headline: String
         let message: String
+        let nextActionTitle: String
+        let destination: WidgetDestination
 
         if projectedCount > 0 {
             status = .gapDetected
@@ -75,24 +135,39 @@ enum WidgetDataWriter {
             } else {
                 message = "\(projectedCount) projected protections to plan for"
             }
+            nextActionTitle = "Review gaps"
+            destination = .coverage
         } else if requiredCount > 0 {
             status = .healthy
             headline = "Coverage looks strong"
             message = "\(requiredCount) core protections in place"
+            nextActionTitle = "Open dashboard"
+            destination = .coverage
         } else if policyCount > 0 {
             status = .unknown
             headline = "Coverage summary ready"
             message = "\(policyCount) policies analyzed"
+            nextActionTitle = "Hear summary"
+            destination = .summary
         } else {
             status = .unknown
             headline = "Open Faro to analyze"
             message = "No coverage snapshot yet"
+            nextActionTitle = "Start intake"
+            destination = .analyze
         }
 
         let sortedByPriority = results.coverageOptions.sorted {
             categoryPriority($0.category) < categoryPriority($1.category)
         }
         let topCoverageType = sortedByPriority.first?.type
+        let coverageLines = Array(sortedByPriority.prefix(3)).map { option in
+            WidgetCoverageLine(
+                title: option.type,
+                category: option.category.rawValue,
+                triggerEvent: option.triggerEvent
+            )
+        }
         let premiumLow = results.coverageOptions.reduce(0) { $0 + $1.estimatedPremiumLow }
         let premiumHigh = results.coverageOptions.reduce(0) { $0 + $1.estimatedPremiumHigh }
         let averageConfidence = results.coverageOptions.isEmpty
@@ -105,12 +180,18 @@ enum WidgetDataWriter {
                 status: status,
                 headline: headline,
                 message: message,
+                isInProgress: false,
+                completedSteps: totalPipelineSteps,
+                totalSteps: totalPipelineSteps,
                 nextRenewalDays: nil,
                 policyCount: policyCount,
                 requiredCount: requiredCount,
                 recommendedCount: recommendedCount,
                 projectedCount: projectedCount,
                 topCoverageType: topCoverageType,
+                nextActionTitle: nextActionTitle,
+                destination: destination,
+                coverageLines: coverageLines,
                 premiumLow: premiumLow,
                 premiumHigh: premiumHigh,
                 averageConfidence: averageConfidence,

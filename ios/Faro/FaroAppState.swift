@@ -23,6 +23,7 @@ final class FaroAppState: ObservableObject {
     @Published var contactMiddleName: String = ""
     @Published var contactLastName: String = ""
     @Published var results: ResultsResponse?
+    @Published var selectedSectionRawValue: String = "analyze"
 
     var isSignedIn: Bool {
         isOnboarded && !userFirstName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -74,15 +75,25 @@ final class FaroAppState: ObservableObject {
         contactMiddleName = ""
         contactLastName = ""
         results = nil
+        selectedSectionRawValue = "analyze"
+        WidgetDataWriter.clear()
     }
 
     func beginNewAnalysis(sessionId: String, businessName: String) {
         self.sessionId = sessionId
         self.businessName = businessName
         self.results = nil
+        self.selectedSectionRawValue = "analyze"
+        WidgetDataWriter.beginAnalysis(businessName: businessName)
     }
 
     func completeAnalysis(results: ResultsResponse) {
         self.results = results
+        self.selectedSectionRawValue = "coverage"
+        WidgetDataWriter.update(from: results, businessName: businessName)
+    }
+
+    func openSection(_ rawValue: String) {
+        selectedSectionRawValue = rawValue
     }
 }

@@ -5,6 +5,9 @@ struct RiskProfileView: View {
     let riskProfile: RiskProfile
     let businessName: String
 
+    @State private var appeared = false
+    @State private var gaugeProgress: Double = 0
+
     private var riskLevelNormalized: Double {
         switch riskProfile.riskLevel?.lowercased() {
         case "low": return 0.25
@@ -27,21 +30,30 @@ struct RiskProfileView: View {
         ScrollView {
             VStack(spacing: FaroSpacing.lg) {
                 headerSection
+                    .faroStaggerIn(appeared: appeared, delay: 0)
+
                 riskGaugeSection
+                    .faroStaggerIn(appeared: appeared, delay: 0.06)
+
                 if let exposures = riskProfile.primaryExposures, !exposures.isEmpty {
                     exposuresSection(exposures)
+                        .faroStaggerIn(appeared: appeared, delay: 0.12)
                 }
                 if let stateReqs = riskProfile.stateRequirements, !stateReqs.isEmpty {
                     stateRequirementsSection(stateReqs)
+                        .faroStaggerIn(appeared: appeared, delay: 0.18)
                 }
                 if let empImplications = riskProfile.employeeImplications, !empImplications.isEmpty {
                     employeeSection(empImplications)
+                        .faroStaggerIn(appeared: appeared, delay: 0.24)
                 }
                 if let unusualRisks = riskProfile.unusualRisks, !unusualRisks.isEmpty {
                     unusualRisksSection(unusualRisks)
+                        .faroStaggerIn(appeared: appeared, delay: 0.3)
                 }
                 if let summary = riskProfile.reasoningSummary, !summary.isEmpty {
                     summarySection(summary)
+                        .faroStaggerIn(appeared: appeared, delay: 0.36)
                 }
 
                 Spacer(minLength: 40)
@@ -53,6 +65,12 @@ struct RiskProfileView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .onAppear {
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { appeared = true }
+            withAnimation(.spring(response: 1.2, dampingFraction: 0.7).delay(0.4)) {
+                gaugeProgress = riskLevelNormalized
+            }
+        }
     }
 
     private var headerSection: some View {
@@ -79,27 +97,29 @@ struct RiskProfileView: View {
             ZStack {
                 Circle()
                     .trim(from: 0, to: 0.75)
-                    .stroke(FaroPalette.ink.opacity(0.08), style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                    .stroke(FaroPalette.ink.opacity(0.06), style: StrokeStyle(lineWidth: 16, lineCap: .round))
                     .rotationEffect(.degrees(135))
 
                 Circle()
-                    .trim(from: 0, to: 0.75 * riskLevelNormalized)
+                    .trim(from: 0, to: 0.75 * gaugeProgress)
                     .stroke(
-                        riskLevelColor,
-                        style: StrokeStyle(lineWidth: 14, lineCap: .round)
+                        riskLevelColor.gradient,
+                        style: StrokeStyle(lineWidth: 16, lineCap: .round)
                     )
                     .rotationEffect(.degrees(135))
+                    .shadow(color: riskLevelColor.opacity(0.3), radius: 8, y: 0)
 
                 VStack(spacing: 4) {
                     Text(riskProfile.riskLevel?.capitalized ?? "Unknown")
                         .font(FaroType.title2())
                         .foregroundStyle(riskLevelColor)
+                        .contentTransition(.numericText())
                     Text("Risk Level")
                         .font(FaroType.caption())
                         .foregroundStyle(FaroPalette.ink.opacity(0.5))
                 }
             }
-            .frame(width: 160, height: 160)
+            .frame(width: 170, height: 170)
 
             if let revenue = riskProfile.revenueExposure, !revenue.isEmpty {
                 HStack(spacing: FaroSpacing.xs) {
@@ -213,6 +233,7 @@ struct RiskProfileView: View {
                 .font(FaroType.body())
                 .foregroundStyle(FaroPalette.ink.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(3)
         }
         .padding(FaroSpacing.md)
         .faroGlassCard(cornerRadius: FaroRadius.xl)
@@ -252,8 +273,8 @@ struct TagPill: View {
                 .font(FaroType.caption(.semibold))
         }
         .foregroundStyle(tint)
-        .padding(.horizontal, FaroSpacing.sm)
-        .padding(.vertical, FaroSpacing.xs)
+        .padding(.horizontal, FaroSpacing.sm + 2)
+        .padding(.vertical, FaroSpacing.xs + 1)
         .background(tint.opacity(0.12))
         .clipShape(Capsule())
     }
