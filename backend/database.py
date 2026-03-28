@@ -31,6 +31,25 @@ async def get_session(session_id: str) -> Optional[dict]:
     return await db.sessions.find_one({"session_id": session_id}, {"_id": 0})
 
 
+async def save_audio(session_id: str, audio_bytes: bytes) -> None:
+    db = get_db()
+    import base64
+    await db.audio.update_one(
+        {"session_id": session_id},
+        {"$set": {"session_id": session_id, "data": base64.b64encode(audio_bytes).decode()}},
+        upsert=True,
+    )
+
+
+async def get_audio(session_id: str) -> Optional[bytes]:
+    db = get_db()
+    doc = await db.audio.find_one({"session_id": session_id})
+    if doc and doc.get("data"):
+        import base64
+        return base64.b64decode(doc["data"])
+    return None
+
+
 async def close():
     global _client
     if _client:

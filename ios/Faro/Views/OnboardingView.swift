@@ -155,7 +155,7 @@ struct OnboardingView: View {
                 set: { if !$0 { vm.sessionId = nil } }
             )) {
                 if let sessionId = vm.sessionId {
-                    AgentTrackerView(sessionId: sessionId)
+                    AgentTrackerView(sessionId: sessionId, businessName: vm.businessName)
                 }
             }
         }

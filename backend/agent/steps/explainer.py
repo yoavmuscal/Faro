@@ -33,8 +33,10 @@ This text will be converted to speech."""
 ELEVENLABS_VOICE_ID = "pNInz6obpgDQGcFmaJgB"  # "Adam" — professional, clear
 
 
-async def synthesize_speech(text: str) -> str:
-    """Send text to ElevenLabs, return audio URL (or base64 data URL as fallback)."""
+async def synthesize_speech(session_id: str, text: str) -> str:
+    """Send text to ElevenLabs, store audio in MongoDB, return /audio/{session_id} URL."""
+    import database as db
+
     api_key = os.environ.get("ELEVENLABS_API_KEY", "")
     if not api_key:
         return ""
@@ -55,15 +57,13 @@ async def synthesize_speech(text: str) -> str:
         resp = await client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
 
-    # TODO: upload audio bytes to S3/R2 and return presigned URL
-    # For now, store in MongoDB as base64 and return a /audio/{session_id} endpoint URL
-    import base64
-    audio_b64 = base64.b64encode(resp.content).decode()
-    return f"data:audio/mpeg;base64,{audio_b64}"
+    await db.save_audio(session_id, resp.content)
+    return f"/audio/{session_id}"
 
 
 async def run(state: dict) -> dict:
     intake = state["intake"]
+    session_id = state["session_id"]
     coverage_required = [
         c for c in state["coverage_requirements"]
         if c["category"] in ("required", "recommended")
@@ -74,6 +74,6 @@ async def run(state: dict) -> dict:
         coverage_json=json.dumps(coverage_required, indent=2),
     )
     summary = await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt)
-    voice_url = await synthesize_speech(summary)
+    voice_url = await synthesize_speech(session_id, summary)
 
     return {**state, "plain_english_summary": summary, "voice_url": voice_url}

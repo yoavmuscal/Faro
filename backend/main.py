@@ -3,8 +3,9 @@ import json
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from models import (
     IntakeRequest, IntakeResponse,
@@ -150,6 +151,16 @@ async def get_status(session_id: str):
             message=f"Coverage analysis complete. {required_count} required policies identified.",
         )
     return StatusResponse(status=CoverageStatus.unknown, message="Coverage review recommended")
+
+
+# ── GET /audio/{session_id} ──────────────────────────────────────────────────
+
+@app.get("/audio/{session_id}")
+async def get_audio(session_id: str):
+    audio_bytes = await db.get_audio(session_id)
+    if not audio_bytes:
+        raise HTTPException(404, "Audio not found")
+    return Response(content=audio_bytes, media_type="audio/mpeg")
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

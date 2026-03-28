@@ -4,6 +4,7 @@ import SwiftUI
 
 struct AgentTrackerView: View {
     let sessionId: String
+    let businessName: String
 
     @StateObject private var ws: WebSocketService
     @State private var navigateToDashboard = false
@@ -11,8 +12,9 @@ struct AgentTrackerView: View {
 
     private let allSteps: [AgentStep] = [.riskProfiler, .coverageMapper, .submissionBuilder, .explainer]
 
-    init(sessionId: String) {
+    init(sessionId: String, businessName: String = "Business") {
         self.sessionId = sessionId
+        self.businessName = businessName
         _ws = StateObject(wrappedValue: WebSocketService(sessionId: sessionId))
     }
 
@@ -65,7 +67,7 @@ struct AgentTrackerView: View {
         .navigationBarBackButtonHidden(isComplete)
         .navigationDestination(isPresented: $navigateToDashboard) {
             if let results {
-                CoverageDashboardView(results: results, sessionId: sessionId)
+                CoverageDashboardView(results: results, sessionId: sessionId, businessName: businessName)
             }
         }
         .onAppear { ws.connect() }

@@ -18,11 +18,26 @@ final class CoverageDashboardViewModel: ObservableObject {
     func playVoiceSummary() {
         guard !results.voiceSummaryUrl.isEmpty else { return }
         isPlayingAudio = true
-        if let url = URL(string: results.voiceSummaryUrl) {
-            audioPlayer = AVPlayer(url: url)
-            audioPlayer?.play()
-            // TODO: observe playerItem to reset isPlayingAudio when done
+
+        // Backend returns relative path like /audio/{session_id}
+        let urlString: String
+        if results.voiceSummaryUrl.hasPrefix("/") {
+            urlString = APIConfig.httpBaseURL + results.voiceSummaryUrl
+        } else {
+            urlString = results.voiceSummaryUrl
         }
+
+        guard let url = URL(string: urlString) else { return }
+        let item = AVPlayerItem(url: url)
+        audioPlayer = AVPlayer(playerItem: item)
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.isPlayingAudio = false }
+        }
+        audioPlayer?.play()
     }
 
     func stopAudio() {
@@ -38,15 +53,17 @@ final class CoverageDashboardViewModel: ObservableObject {
 struct CoverageDashboardView: View {
     let results: ResultsResponse
     let sessionId: String
+    let businessName: String
 
     @StateObject private var vm: CoverageDashboardViewModel
     @State private var selectedIndex = 0
     @State private var showShareSheet = false
     @State private var pdfURL: URL?
 
-    init(results: ResultsResponse, sessionId: String) {
+    init(results: ResultsResponse, sessionId: String, businessName: String = "Business") {
         self.results = results
         self.sessionId = sessionId
+        self.businessName = businessName
         _vm = StateObject(wrappedValue: CoverageDashboardViewModel(results: results))
     }
 
@@ -120,6 +137,7 @@ struct CoverageDashboardView: View {
         }
         .navigationTitle("Coverage Analysis")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { WidgetDataWriter.update(from: results, businessName: businessName) }
         .sheet(isPresented: $showShareSheet) {
             if let url = pdfURL {
                 ShareSheet(items: [url])
@@ -128,9 +146,10 @@ struct CoverageDashboardView: View {
     }
 
     private func exportPDF() async {
-        // TODO: build PDF from results using PDFBuilder, then share
-        // pdfURL = PDFBuilder.build(from: results)
-        // showShareSheet = true
+        pdfURL = PDFBuilder.build(from: results, businessName: businessName)
+        if pdfURL != nil {
+            showShareSheet = true
+        }
     }
 }
 
