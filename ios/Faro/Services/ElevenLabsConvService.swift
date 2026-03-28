@@ -31,7 +31,7 @@ enum ElevenLabsConvService {
 @MainActor
 final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSessionWebSocketDelegate {
 
-    enum ConnectionState {
+    enum ConnectionState: Equatable {
         case disconnected, connecting, connected, error(String)
     }
 
