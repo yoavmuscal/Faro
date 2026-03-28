@@ -4,6 +4,8 @@ Input:  raw business description from intake
 Output: structured risk profile JSON
 Model:  K2 Think V2 (with Claude fallback)
 """
+import json
+
 from ..llm import chat_with_fallback, parse_json_response
 from typing import Literal
 from pydantic import BaseModel, ValidationError
@@ -68,7 +70,8 @@ async def run(state: dict) -> dict:
     try:
         parsed = parse_json_response(raw)
         risk_profile = RiskProfile(**parsed)
-    except (ValueError, ValidationError) as e:
-        raise ValueError(f"Risk profiler failed to parse LLM output: {e}\n\nRaw: {raw}")
+    except (ValueError, ValidationError, json.JSONDecodeError) as e:
+        snippet = (raw[:500] + "…") if isinstance(raw, str) and len(raw) > 500 else raw
+        raise ValueError(f"Risk profiler failed to parse LLM output: {e}\n\nRaw: {snippet!r}")
 
     return {**state, "risk_profile": risk_profile.model_dump()}

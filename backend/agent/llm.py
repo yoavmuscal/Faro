@@ -20,7 +20,13 @@ async def chat_with_fallback(system: str, user: str) -> str:
             system_instruction=system,
         )
     )
-    return response.text
+    text = response.text
+    if text is None or not str(text).strip():
+        raise ValueError(
+            "Gemini returned an empty response. "
+            "Set GEMINI_API_KEY in backend/.env, check billing/quota, network, or try again."
+        )
+    return str(text).strip()
 
 
 def parse_json_response(raw: str):
@@ -41,6 +47,8 @@ def parse_json_response(raw: str):
     fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
     if fence_match:
         candidate = fence_match.group(1).strip()
+        if not candidate:
+            raise ValueError("LLM returned an empty JSON code block")
         try:
             return json.loads(candidate)
         except json.JSONDecodeError:
@@ -61,4 +69,9 @@ def parse_json_response(raw: str):
         raise ValueError("Malformed JSON boundaries in LLM response")
 
     candidate = text[start : end + 1].strip()
-    return json.loads(candidate)
+    if not candidate:
+        raise ValueError("Extracted JSON fragment was empty")
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON in LLM response: {e}") from e
