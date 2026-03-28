@@ -1,7 +1,9 @@
 import Foundation
+#if os(iOS)
 import WidgetKit
+#endif
 
-/// Writes coverage data to the shared App Group so the FaroWidget can display it.
+/// Writes coverage data to the shared App Group so the FaroWidget can display it (iOS).
 enum WidgetDataWriter {
     private static let suiteName = "group.com.faro.shared"
 
@@ -16,7 +18,9 @@ enum WidgetDataWriter {
         } else {
             defaults.removeObject(forKey: "next_renewal_days")
         }
+        #if os(iOS)
         WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     /// Call after results are loaded to push data to the widget.

@@ -1,4 +1,38 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
+
+// MARK: - Keyboard (iOS number pads; macOS uses default field behavior)
+
+enum FaroTextKeyboard {
+    case `default`
+    case numberPad
+    case decimalPad
+}
+
+#if os(iOS)
+extension FaroTextKeyboard {
+    var uiKeyboardType: UIKeyboardType {
+        switch self {
+        case .default: return .default
+        case .numberPad: return .numberPad
+        case .decimalPad: return .decimalPad
+        }
+    }
+}
+#endif
+
+private extension View {
+    @ViewBuilder
+    func faroKeyboard(_ keyboard: FaroTextKeyboard) -> some View {
+        #if os(iOS)
+        self.keyboardType(keyboard.uiKeyboardType)
+        #else
+        self
+        #endif
+    }
+}
 
 // MARK: - Onboarding state
 
@@ -67,96 +101,105 @@ final class OnboardingViewModel: ObservableObject {
 // MARK: - View
 
 struct OnboardingView: View {
+    @EnvironmentObject private var appState: FaroAppState
     @StateObject private var vm = OnboardingViewModel()
-    @State private var navigateToTracker = false
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                ProgressView(value: vm.progress)
-                    .tint(.primary)
-                    .padding(.horizontal)
-                    .padding(.top, 20)
-
-                Spacer()
-
-                Group {
-                    switch vm.currentField {
-                    case .businessName:
-                        QuestionCard(
-                            question: "What's your business called?",
-                            placeholder: "e.g. Sunny Days Daycare",
-                            text: $vm.businessName
-                        )
-                    case .description:
-                        QuestionCard(
-                            question: "What does your business do?",
-                            placeholder: "Describe it in your own words — the more detail the better",
-                            text: $vm.description,
-                            isMultiline: true
-                        )
-                    case .employeeCount:
-                        QuestionCard(
-                            question: "How many employees do you have?",
-                            placeholder: "12",
-                            text: $vm.employeeCountText,
-                            keyboardType: .numberPad
-                        )
-                    case .state:
-                        QuestionCard(
-                            question: "Which state do you operate in?",
-                            placeholder: "NJ",
-                            text: $vm.state
-                        )
-                    case .annualRevenue:
-                        QuestionCard(
-                            question: "What's your approximate annual revenue?",
-                            placeholder: "800000",
-                            text: $vm.annualRevenueText,
-                            keyboardType: .decimalPad
-                        )
-                    }
-                }
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity),
-                    removal: .move(edge: .leading).combined(with: .opacity)
-                ))
-
-                Spacer()
-
-                if let error = vm.errorMessage {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal)
-                }
-
-                Button(action: vm.advance) {
-                    Group {
-                        if vm.isSubmitting {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text(vm.currentField == .annualRevenue ? "Analyze my coverage" : "Continue")
-                                .fontWeight(.semibold)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(vm.canAdvance ? Color.primary : Color.secondary.opacity(0.3))
-                    .foregroundStyle(vm.canAdvance ? Color(uiColor: .systemBackground) : .secondary)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                }
-                .disabled(!vm.canAdvance || vm.isSubmitting)
+        VStack(spacing: 0) {
+            ProgressView(value: vm.progress)
+                .tint(FaroPalette.purpleDeep)
                 .padding(.horizontal)
-                .padding(.bottom, 40)
-            }
-            .navigationDestination(isPresented: Binding(
-                get: { vm.sessionId != nil },
-                set: { if !$0 { vm.sessionId = nil } }
-            )) {
-                if let sessionId = vm.sessionId {
-                    AgentTrackerView(sessionId: sessionId, businessName: vm.businessName)
+                .padding(.top, FaroSpacing.lg)
+
+            Spacer()
+
+            Group {
+                switch vm.currentField {
+                case .businessName:
+                    QuestionCard(
+                        question: "What's your business called?",
+                        placeholder: "e.g. Sunny Days Daycare",
+                        text: $vm.businessName
+                    )
+                case .description:
+                    QuestionCard(
+                        question: "What does your business do?",
+                        placeholder: "Describe it in your own words — the more detail the better",
+                        text: $vm.description,
+                        isMultiline: true
+                    )
+                case .employeeCount:
+                    QuestionCard(
+                        question: "How many employees do you have?",
+                        placeholder: "12",
+                        text: $vm.employeeCountText,
+                        keyboard: .numberPad
+                    )
+                case .state:
+                    QuestionCard(
+                        question: "Which state do you operate in?",
+                        placeholder: "NJ",
+                        text: $vm.state
+                    )
+                case .annualRevenue:
+                    QuestionCard(
+                        question: "What's your approximate annual revenue?",
+                        placeholder: "800000",
+                        text: $vm.annualRevenueText,
+                        keyboard: .decimalPad
+                    )
                 }
+            }
+            .transition(.asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal: .move(edge: .leading).combined(with: .opacity)
+            ))
+
+            Spacer()
+
+            if let error = vm.errorMessage {
+                Text(error)
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.danger)
+                    .padding(.horizontal)
+            }
+
+            Button(action: vm.advance) {
+                Group {
+                    if vm.isSubmitting {
+                        ProgressView()
+                            .tint(FaroPalette.onAccent)
+                    } else {
+                        Text(vm.currentField == .annualRevenue ? "Analyze my coverage" : "Continue")
+                            .font(FaroType.headline())
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(vm.canAdvance ? FaroPalette.purpleDeep : FaroPalette.purple.opacity(0.25))
+                .foregroundStyle(vm.canAdvance ? FaroPalette.onAccent : FaroPalette.ink.opacity(0.45))
+                .clipShape(RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
+            }
+            .disabled(!vm.canAdvance || vm.isSubmitting)
+            .padding(.horizontal)
+            .padding(.bottom, 40)
+        }
+        .faroCanvasBackground()
+        .navigationTitle("Analyze")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .navigationDestination(isPresented: Binding(
+            get: { vm.sessionId != nil },
+            set: { if !$0 { vm.sessionId = nil } }
+        )) {
+            if let sessionId = vm.sessionId {
+                AgentTrackerView(sessionId: sessionId, businessName: vm.businessName)
+            }
+        }
+        .onChange(of: vm.sessionId) { _, newId in
+            if let id = newId {
+                appState.beginNewAnalysis(sessionId: id, businessName: vm.businessName)
             }
         }
     }
@@ -169,27 +212,28 @@ struct QuestionCard: View {
     let placeholder: String
     @Binding var text: String
     var isMultiline = false
-    var keyboardType: UIKeyboardType = .default
+    var keyboard: FaroTextKeyboard = .default
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
             Text(question)
-                .font(.title2)
-                .fontWeight(.bold)
+                .font(FaroType.title2())
+                .foregroundStyle(FaroPalette.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
             if isMultiline {
                 TextEditor(text: $text)
+                    .font(FaroType.body())
+                    .scrollContentBackground(.hidden)
                     .frame(minHeight: 100, maxHeight: 160)
-                    .padding(12)
-                    .background(Color.secondary.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(FaroSpacing.sm + 2)
+                    .faroGlassCard(cornerRadius: FaroRadius.md, material: .thinMaterial)
             } else {
                 TextField(placeholder, text: $text)
-                    .keyboardType(keyboardType)
-                    .padding(16)
-                    .background(Color.secondary.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .font(FaroType.body())
+                    .faroKeyboard(keyboard)
+                    .padding(FaroSpacing.md)
+                    .faroGlassCard(cornerRadius: FaroRadius.md, material: .thinMaterial)
             }
         }
         .padding(.horizontal)
@@ -197,5 +241,8 @@ struct QuestionCard: View {
 }
 
 #Preview {
-    OnboardingView()
+    NavigationStack {
+        OnboardingView()
+    }
+    .environmentObject(FaroAppState())
 }

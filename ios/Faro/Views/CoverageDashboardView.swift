@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import AVFoundation
 
 // MARK: - View Model
@@ -19,7 +20,6 @@ final class CoverageDashboardViewModel: ObservableObject {
         guard !results.voiceSummaryUrl.isEmpty else { return }
         isPlayingAudio = true
 
-        // Backend returns relative path like /audio/{session_id}
         let urlString: String
         if results.voiceSummaryUrl.hasPrefix("/") {
             urlString = APIConfig.httpBaseURL + results.voiceSummaryUrl
@@ -44,11 +44,9 @@ final class CoverageDashboardViewModel: ObservableObject {
         audioPlayer?.pause()
         isPlayingAudio = false
     }
-
-    // PDF generation lives in PDFBuilder — see ios/Faro/Utilities/PDFBuilder.swift
 }
 
-// MARK: - View
+// MARK: - Dashboard
 
 struct CoverageDashboardView: View {
     let results: ResultsResponse
@@ -57,7 +55,6 @@ struct CoverageDashboardView: View {
 
     @StateObject private var vm: CoverageDashboardViewModel
     @State private var selectedIndex = 0
-    @State private var showShareSheet = false
     @State private var pdfURL: URL?
 
     init(results: ResultsResponse, sessionId: String, businessName: String = "Business") {
@@ -74,33 +71,38 @@ struct CoverageDashboardView: View {
         }
     }
 
+    private var categoryChartData: [CategoryChartSlice] {
+        let grouped = Dictionary(grouping: results.coverageOptions, by: \.category)
+        let order: [CoverageCategory] = [.required, .recommended, .projected]
+        return order.compactMap { cat in
+            let n = grouped[cat]?.count ?? 0
+            guard n > 0 else { return nil }
+            return CategoryChartSlice(category: cat, count: n)
+        }
+    }
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                // Header
-                VStack(alignment: .leading, spacing: 4) {
+            VStack(spacing: FaroSpacing.lg) {
+                VStack(alignment: .leading, spacing: FaroSpacing.xs) {
                     Text("Your coverage")
-                        .font(.title).fontWeight(.bold)
+                        .font(FaroType.title())
+                        .foregroundStyle(FaroPalette.ink)
                     Text("\(sortedCoverage.filter { $0.category == .required }.count) required · \(sortedCoverage.filter { $0.category == .recommended }.count) recommended · \(sortedCoverage.filter { $0.category == .projected }.count) projected")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(FaroType.subheadline())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.55))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal)
+                .padding(.horizontal, FaroSpacing.md)
 
-                // Coverage cards (swipeable TabView)
-                TabView(selection: $selectedIndex) {
-                    ForEach(sortedCoverage.indices, id: \.self) { i in
-                        CoverageCard(option: sortedCoverage[i])
-                            .tag(i)
-                            .padding(.horizontal)
-                    }
+                if !categoryChartData.isEmpty {
+                    coverageMixChart
+                        .padding(.horizontal, FaroSpacing.md)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .always))
-                .frame(height: 320)
 
-                // Action buttons
-                VStack(spacing: 12) {
+                coverageCarousel(sortedCoverage: sortedCoverage)
+
+                VStack(spacing: FaroSpacing.sm + 2) {
                     Button {
                         if vm.isPlayingAudio { vm.stopAudio() } else { vm.playVoiceSummary() }
                     } label: {
@@ -108,49 +110,161 @@ struct CoverageDashboardView: View {
                             vm.isPlayingAudio ? "Stop" : "Hear your summary",
                             systemImage: vm.isPlayingAudio ? "stop.fill" : "speaker.wave.2.fill"
                         )
-                        .fontWeight(.semibold)
+                        .font(FaroType.headline())
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
-                        .background(Color.primary)
-                        .foregroundStyle(Color(uiColor: .systemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .background(FaroPalette.purpleDeep)
+                        .foregroundStyle(FaroPalette.onAccent)
+                        .clipShape(RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
                     }
                     .disabled(results.voiceSummaryUrl.isEmpty)
 
                     Button {
                         Task { await exportPDF() }
                     } label: {
-                        Label("Export submission packet", systemImage: "arrow.up.doc.fill")
-                            .fontWeight(.semibold)
+                        Label("Prepare submission packet", systemImage: "arrow.up.doc.fill")
+                            .font(FaroType.headline())
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
-                            .background(Color.secondary.opacity(0.12))
-                            .foregroundStyle(.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    .buttonStyle(.faroGlassProminent)
+
+                    if let url = pdfURL {
+                        ShareLink(item: url, preview: SharePreview("Faro submission", image: Image(systemName: "doc.fill"))) {
+                            Label("Share PDF", systemImage: "square.and.arrow.up")
+                                .font(FaroType.headline())
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                        }
+                        .buttonStyle(.faroGlassProminent)
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, FaroSpacing.md)
 
                 Spacer(minLength: 40)
             }
-            .padding(.top)
+            .padding(.top, FaroSpacing.md)
         }
+        .faroCanvasBackground()
         .navigationTitle("Coverage Analysis")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .onAppear { WidgetDataWriter.update(from: results, businessName: businessName) }
-        .sheet(isPresented: $showShareSheet) {
-            if let url = pdfURL {
-                ShareSheet(items: [url])
+    }
+
+    private var coverageMixChart: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+            Text("Mix by category")
+                .font(FaroType.headline())
+                .foregroundStyle(FaroPalette.ink)
+
+            Chart(categoryChartData) { slice in
+                SectorMark(
+                    angle: .value("Policies", slice.count),
+                    innerRadius: .ratio(0.52),
+                    angularInset: 1.5
+                )
+                .foregroundStyle(categoryTint(slice.category))
+            }
+            .frame(height: 200)
+
+            HStack(spacing: FaroSpacing.md) {
+                ForEach(categoryChartData) { slice in
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(categoryTint(slice.category))
+                            .frame(width: 8, height: 8)
+                        Text(slice.category.label)
+                            .font(FaroType.caption2())
+                            .foregroundStyle(FaroPalette.ink.opacity(0.7))
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(FaroSpacing.md)
+        .faroGlassCard(cornerRadius: FaroRadius.xl, material: .regularMaterial)
+    }
+
+    @ViewBuilder
+    private func coverageCarousel(sortedCoverage: [CoverageOption]) -> some View {
+        #if os(iOS)
+        TabView(selection: $selectedIndex) {
+            ForEach(sortedCoverage.indices, id: \.self) { i in
+                CoverageCard(option: sortedCoverage[i])
+                    .tag(i)
+                    .padding(.horizontal)
             }
         }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .frame(height: 340)
+        #else
+        ScrollView(.horizontal, showsIndicators: true) {
+            HStack(alignment: .top, spacing: FaroSpacing.md) {
+                ForEach(sortedCoverage) { option in
+                    CoverageCard(option: option)
+                        .frame(width: 380)
+                }
+            }
+            .padding(.horizontal, FaroSpacing.md)
+        }
+        .frame(minHeight: 300)
+        #endif
     }
 
     private func exportPDF() async {
         pdfURL = PDFBuilder.build(from: results, businessName: businessName)
-        if pdfURL != nil {
-            showShareSheet = true
+    }
+
+    private func categoryTint(_ category: CoverageCategory) -> Color {
+        switch category {
+        case .required: return FaroPalette.danger
+        case .recommended: return FaroPalette.warning
+        case .projected: return FaroPalette.purple
         }
     }
+}
+
+// MARK: - Chart model
+
+private struct CategoryChartSlice: Identifiable {
+    let category: CoverageCategory
+    let count: Int
+    var id: CoverageCategory { category }
+}
+
+private extension CoverageCategory {
+    var label: String {
+        switch self {
+        case .required: return "Required"
+        case .recommended: return "Recommended"
+        case .projected: return "Projected"
+        }
+    }
+}
+
+// MARK: - Glass button style
+
+private struct FaroGlassProminentButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(FaroPalette.ink)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
+                    .fill(FaroPalette.purple.opacity(configuration.isPressed ? 0.14 : 0))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
+                    .strokeBorder(FaroPalette.glassStroke, lineWidth: 1)
+            )
+            .opacity(configuration.isPressed ? 0.92 : 1)
+    }
+}
+
+private extension ButtonStyle where Self == FaroGlassProminentButtonStyle {
+    static var faroGlassProminent: FaroGlassProminentButtonStyle { FaroGlassProminentButtonStyle() }
 }
 
 // MARK: - Coverage Card
@@ -160,9 +274,9 @@ struct CoverageCard: View {
 
     var categoryColor: Color {
         switch option.category {
-        case .required: return .red
-        case .recommended: return .orange
-        case .projected: return .purple
+        case .required: return FaroPalette.danger
+        case .recommended: return FaroPalette.warning
+        case .projected: return FaroPalette.purple
         }
     }
 
@@ -176,22 +290,21 @@ struct CoverageCard: View {
 
     var confidenceColor: Color {
         switch option.confidence {
-        case 0.8...: return .green
-        case 0.5..<0.8: return .orange
-        default: return .secondary
+        case 0.8...: return FaroPalette.success
+        case 0.5..<0.8: return FaroPalette.warning
+        default: return FaroPalette.ink.opacity(0.4)
         }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
             HStack {
                 Text(categoryLabel)
-                    .font(.caption)
-                    .fontWeight(.bold)
+                    .font(FaroType.caption(.bold))
                     .foregroundStyle(categoryColor)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(categoryColor.opacity(0.12))
+                    .background(categoryColor.opacity(0.14))
                     .clipShape(Capsule())
 
                 Spacer()
@@ -201,60 +314,49 @@ struct CoverageCard: View {
                         .fill(confidenceColor)
                         .frame(width: 8, height: 8)
                     Text("\(Int(option.confidence * 100))% confidence")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.55))
                 }
             }
 
             Text(option.type)
-                .font(.title3)
-                .fontWeight(.bold)
+                .font(FaroType.title3())
+                .foregroundStyle(FaroPalette.ink)
 
             Text(option.description)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(FaroType.subheadline())
+                .foregroundStyle(FaroPalette.ink.opacity(0.6))
                 .fixedSize(horizontal: false, vertical: true)
 
             if let trigger = option.triggerEvent {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.caption)
+                        .font(FaroType.caption2())
                     Text(trigger)
-                        .font(.caption)
+                        .font(FaroType.caption())
                 }
-                .foregroundStyle(.purple)
-                .padding(10)
-                .background(Color.purple.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(FaroPalette.purpleDeep)
+                .padding(FaroSpacing.sm)
+                .background(FaroPalette.purple.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: FaroRadius.sm, style: .continuous))
             }
 
             Spacer()
 
             HStack {
                 Text("Est. premium")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.45))
                 Spacer()
                 Text("$\(Int(option.estimatedPremiumLow).formatted()) – $\(Int(option.estimatedPremiumHigh).formatted())/yr")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+                    .font(FaroType.subheadline(.semibold))
+                    .foregroundStyle(FaroPalette.ink)
             }
         }
-        .padding(20)
+        .padding(FaroSpacing.md + 4)
         .frame(maxWidth: .infinity)
-        .background(Color.secondary.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .faroGlassCard(cornerRadius: FaroRadius.xl, material: .regularMaterial)
     }
-}
-
-// MARK: - Share Sheet
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {

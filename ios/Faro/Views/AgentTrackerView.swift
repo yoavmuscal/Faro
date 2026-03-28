@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - View
 
 struct AgentTrackerView: View {
+    @EnvironmentObject private var appState: FaroAppState
     let sessionId: String
     let businessName: String
 
@@ -24,18 +25,19 @@ struct AgentTrackerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: FaroSpacing.sm) {
                 Text("Analyzing your business")
-                    .font(.title2).fontWeight(.bold)
+                    .font(FaroType.title2())
+                    .foregroundStyle(FaroPalette.ink)
                 Text("The agent is reasoning through your coverage needs in real time.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(FaroType.subheadline())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.55))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
+            .padding(FaroSpacing.md)
 
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: FaroSpacing.sm + 2) {
                     ForEach(allSteps, id: \.self) { step in
                         StepCard(
                             step: step,
@@ -44,7 +46,7 @@ struct AgentTrackerView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
-                .padding()
+                .padding(FaroSpacing.md)
                 .animation(.spring(response: 0.5, dampingFraction: 0.8), value: ws.stepUpdates.count)
             }
 
@@ -53,17 +55,22 @@ struct AgentTrackerView: View {
                     Task { await loadResults() }
                 } label: {
                     Text("View coverage options")
-                        .fontWeight(.semibold)
+                        .font(FaroType.headline())
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
-                        .background(Color.primary)
-                        .foregroundStyle(Color(uiColor: .systemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .background(FaroPalette.purpleDeep)
+                        .foregroundStyle(FaroPalette.onAccent)
+                        .clipShape(RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
                 }
-                .padding()
+                .padding(FaroSpacing.md)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .faroCanvasBackground()
+        .navigationTitle("Analysis")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .navigationBarBackButtonHidden(isComplete)
         .navigationDestination(isPresented: $navigateToDashboard) {
             if let results {
@@ -76,7 +83,9 @@ struct AgentTrackerView: View {
 
     private func loadResults() async {
         do {
-            results = try await APIService.shared.fetchResults(sessionId: sessionId)
+            let fetched = try await APIService.shared.fetchResults(sessionId: sessionId)
+            results = fetched
+            appState.completeAnalysis(results: fetched)
             navigateToDashboard = true
         } catch {
             // TODO: show error
@@ -117,6 +126,7 @@ struct StepCard: View {
                 if update?.status == .running {
                     ProgressView()
                         .scaleEffect(0.7)
+                        .tint(FaroPalette.info)
                 } else {
                     Image(systemName: update?.status == .complete ? "checkmark" : stepIcon)
                         .font(.system(size: 16, weight: .semibold))
@@ -126,31 +136,29 @@ struct StepCard: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(stepTitle)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(update == nil ? .secondary : .primary)
+                    .font(FaroType.subheadline(.semibold))
+                    .foregroundStyle(update == nil ? FaroPalette.ink.opacity(0.45) : FaroPalette.ink)
 
                 if let summary = update?.summary, update?.status != .running {
                     Text(summary)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.55))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
             Spacer()
         }
-        .padding()
-        .background(Color.secondary.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(FaroSpacing.md)
+        .faroGlassCard(cornerRadius: FaroRadius.md, material: .ultraThinMaterial)
     }
 
     var statusColor: Color {
         switch update?.status {
-        case .complete: return .green
-        case .running: return .blue
-        case .error: return .red
-        case nil: return .secondary
+        case .complete: return FaroPalette.success
+        case .running: return FaroPalette.info
+        case .error: return FaroPalette.danger
+        case nil: return FaroPalette.ink.opacity(0.35)
         }
     }
 }
@@ -159,4 +167,5 @@ struct StepCard: View {
     NavigationStack {
         AgentTrackerView(sessionId: "preview-session")
     }
+    .environmentObject(FaroAppState())
 }
