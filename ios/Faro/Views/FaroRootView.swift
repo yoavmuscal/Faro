@@ -42,6 +42,15 @@ struct FaroRootView: View {
     @State private var section: FaroSection = .analyze
 
     var body: some View {
+        if appState.isSignedIn {
+            mainContent
+        } else {
+            WelcomeView()
+        }
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
         #if os(macOS)
         NavigationSplitView {
             sidebarContent
@@ -93,7 +102,6 @@ struct FaroRootView: View {
     }
 
     // MARK: - macOS Sidebar
-    // `List(selection:)` is macOS-only; keep this block out of the iOS compile unit.
 
     #if os(macOS)
     private var sidebarContent: some View {
@@ -197,6 +205,213 @@ struct FaroRootView: View {
                 icon: "text.bubble"
             ) { section = .analyze }
         }
+    }
+}
+
+// MARK: - Welcome / Sign-In
+
+struct WelcomeView: View {
+    @EnvironmentObject private var appState: FaroAppState
+    @State private var firstName = ""
+    @State private var lastName = ""
+    @State private var email = ""
+    @State private var appeared = false
+    @FocusState private var focusedField: WelcomeField?
+
+    private enum WelcomeField: Hashable {
+        case first, last, email
+    }
+
+    private var canContinue: Bool {
+        !firstName.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !lastName.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        ZStack {
+            backdrop
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                VStack(spacing: FaroSpacing.lg) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [FaroPalette.purpleDeep, FaroPalette.purple],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 88, height: 88)
+                            .shadow(color: FaroPalette.purpleDeep.opacity(0.4), radius: 24, y: 8)
+
+                        Image(systemName: "shield.checkered")
+                            .font(.system(size: 38, weight: .medium))
+                            .foregroundStyle(.white)
+                    }
+                    .scaleEffect(appeared ? 1.0 : 0.5)
+                    .opacity(appeared ? 1 : 0)
+
+                    VStack(spacing: FaroSpacing.xs) {
+                        Text("Welcome to Faro")
+                            .font(FaroType.largeTitle())
+                            .foregroundStyle(FaroPalette.ink)
+
+                        Text("Your AI-powered insurance companion")
+                            .font(FaroType.subheadline())
+                            .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                    }
+                    .offset(y: appeared ? 0 : 20)
+                    .opacity(appeared ? 1 : 0)
+                }
+
+                Spacer().frame(height: FaroSpacing.xl + FaroSpacing.md)
+
+                VStack(spacing: FaroSpacing.md) {
+                    welcomeField("First name", text: $firstName, focused: .first) {
+                        focusedField = .last
+                    }
+                    welcomeField("Last name", text: $lastName, focused: .last) {
+                        focusedField = .email
+                    }
+                    welcomeField("Email (optional)", text: $email, focused: .email) {
+                        if canContinue { signIn() }
+                    }
+                    #if os(iOS)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    #endif
+                }
+                .frame(maxWidth: 380)
+                .offset(y: appeared ? 0 : 30)
+                .opacity(appeared ? 1 : 0)
+
+                Spacer()
+
+                Button(action: signIn) {
+                    HStack(spacing: 8) {
+                        Text("Get Started")
+                            .font(FaroType.headline())
+                        Image(systemName: "arrow.right")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .foregroundStyle(.white)
+                    .background {
+                        RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
+                            .fill(
+                                canContinue
+                                ? AnyShapeStyle(
+                                    LinearGradient(
+                                        colors: [FaroPalette.purpleDeep, FaroPalette.purple],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                : AnyShapeStyle(FaroPalette.ink.opacity(0.08))
+                            )
+                    }
+                    .overlay {
+                        if canContinue {
+                            RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [.white.opacity(0.3), .white.opacity(0.05)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1
+                                )
+                        }
+                    }
+                    .shadow(color: canContinue ? FaroPalette.purpleDeep.opacity(0.35) : .clear, radius: 16, y: 6)
+                }
+                .disabled(!canContinue)
+                .animation(.easeInOut(duration: 0.25), value: canContinue)
+                .frame(maxWidth: 380)
+                .padding(.bottom, FaroSpacing.xl)
+                .offset(y: appeared ? 0 : 40)
+                .opacity(appeared ? 1 : 0)
+            }
+            .padding(.horizontal, FaroSpacing.lg)
+        }
+        .faroCanvasBackground()
+        .onAppear {
+            withAnimation(.spring(response: 0.8, dampingFraction: 0.75)) {
+                appeared = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                focusedField = .first
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func welcomeField(
+        _ placeholder: String,
+        text: Binding<String>,
+        focused: WelcomeField,
+        onSubmit action: @escaping () -> Void
+    ) -> some View {
+        TextField(placeholder, text: text)
+            .font(FaroType.body())
+            .focused($focusedField, equals: focused)
+            .onSubmit(action)
+            #if os(iOS)
+            .textInputAutocapitalization(.words)
+            #endif
+            .padding(.horizontal, FaroSpacing.md)
+            .frame(height: 52)
+            .background {
+                RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                    .strokeBorder(
+                        focusedField == focused
+                        ? FaroPalette.purpleDeep.opacity(0.5)
+                        : FaroPalette.glassStroke,
+                        lineWidth: focusedField == focused ? 1.5 : 1
+                    )
+            }
+    }
+
+    private var backdrop: some View {
+        GeometryReader { geo in
+            let size = min(geo.size.width, geo.size.height) * 0.7
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                FaroPalette.purple.opacity(0.3),
+                                FaroPalette.purpleDeep.opacity(0.1),
+                                Color.clear,
+                            ],
+                            center: .center,
+                            startRadius: size * 0.05,
+                            endRadius: size * 0.55
+                        )
+                    )
+                    .frame(width: size, height: size)
+                    .blur(radius: 60)
+                    .scaleEffect(appeared ? 1.0 : 0.4)
+                    .opacity(appeared ? 1 : 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    private func signIn() {
+        guard canContinue else { return }
+        appState.signIn(firstName: firstName, lastName: lastName, email: email)
     }
 }
 

@@ -31,7 +31,34 @@
 		B000000000000000000000013 /* SubmissionPacketView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000015 /* SubmissionPacketView.swift */; };
 		B000000000000000000000014 /* SummaryPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000016 /* SummaryPlayerView.swift */; };
 		B000000000000000000000015 /* PDFExportContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000017 /* PDFExportContent.swift */; };
+		F10000000000000000000001 /* FaroWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000012 /* FaroWidget.swift */; };
+		F10000000000000000000002 /* FaroWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000013 /* FaroWidgetBundle.swift */; };
+		F10000000000000000000003 /* FaroWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F10000000000000000000016 /* FaroWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		F10000000000000000000022 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E000000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F10000000000000000000025;
+			remoteInfo = FaroWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		F10000000000000000000021 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				F10000000000000000000003 /* FaroWidgetExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		3F338361E0FEDBF598F429A5 /* VoiceIntakeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VoiceIntakeView.swift; sourceTree = "<group>"; };
@@ -61,10 +88,23 @@
 		A000000000000000000000016 /* SummaryPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryPlayerView.swift; sourceTree = "<group>"; };
 		A000000000000000000000017 /* PDFExportContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExportContent.swift; sourceTree = "<group>"; };
 		D000000000000000000000001 /* Faro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Faro.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F10000000000000000000011 /* FaroIOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FaroIOS.entitlements; sourceTree = "<group>"; };
+		F10000000000000000000012 /* FaroWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroWidget.swift; sourceTree = "<group>"; };
+		F10000000000000000000013 /* FaroWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroWidgetBundle.swift; sourceTree = "<group>"; };
+		F10000000000000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		F10000000000000000000015 /* FaroWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FaroWidget.entitlements; sourceTree = "<group>"; };
+		F10000000000000000000016 /* FaroWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FaroWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		E000000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F10000000000000000000023 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -78,6 +118,7 @@
 			isa = PBXGroup;
 			children = (
 				C000000000000000000000002 /* Faro */,
+				F10000000000000000000024 /* FaroWidget */,
 				C000000000000000000000006 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -96,6 +137,7 @@
 				A000000000000000000000009 /* Assets.xcassets */,
 				A00000000000000000000000A /* Info.plist */,
 				A00000000000000000000000E /* Faro.entitlements */,
+				F10000000000000000000011 /* FaroIOS.entitlements */,
 			);
 			path = Faro;
 			sourceTree = "<group>";
@@ -140,6 +182,7 @@
 			isa = PBXGroup;
 			children = (
 				D000000000000000000000001 /* Faro.app */,
+				F10000000000000000000016 /* FaroWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -171,6 +214,17 @@
 			path = DesignSystem;
 			sourceTree = "<group>";
 		};
+		F10000000000000000000024 /* FaroWidget */ = {
+			isa = PBXGroup;
+			children = (
+				F10000000000000000000012 /* FaroWidget.swift */,
+				F10000000000000000000013 /* FaroWidgetBundle.swift */,
+				F10000000000000000000014 /* Info.plist */,
+				F10000000000000000000015 /* FaroWidget.entitlements */,
+			);
+			path = FaroWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -181,15 +235,34 @@
 				E000000000000000000000003 /* Sources */,
 				E000000000000000000000005 /* Frameworks */,
 				E000000000000000000000004 /* Resources */,
+				F10000000000000000000021 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				F10000000000000000000028 /* PBXTargetDependency */,
 			);
 			name = Faro;
 			productName = Faro;
 			productReference = D000000000000000000000001 /* Faro.app */;
 			productType = "com.apple.product-type.application";
+		};
+		F10000000000000000000025 /* FaroWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F1000000000000000000002B /* Build configuration list for PBXNativeTarget "FaroWidgetExtension" */;
+			buildPhases = (
+				F10000000000000000000027 /* Sources */,
+				F10000000000000000000023 /* Frameworks */,
+				F10000000000000000000026 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FaroWidgetExtension;
+			productName = FaroWidgetExtension;
+			productReference = F10000000000000000000016 /* FaroWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -202,6 +275,9 @@
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					E000000000000000000000002 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					F10000000000000000000025 = {
 						CreatedOnToolsVersion = 15.0;
 					};
 				};
@@ -220,6 +296,7 @@
 			projectRoot = "";
 			targets = (
 				E000000000000000000000002 /* Faro */,
+				F10000000000000000000025 /* FaroWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -230,6 +307,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				B000000000000000000000009 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F10000000000000000000026 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -266,7 +350,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F10000000000000000000027 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F10000000000000000000001 /* FaroWidget.swift in Sources */,
+				F10000000000000000000002 /* FaroWidgetBundle.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F10000000000000000000028 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F10000000000000000000025 /* FaroWidgetExtension */;
+			targetProxy = F10000000000000000000022 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		E000000000000000000000006 /* Debug */ = {
@@ -397,7 +498,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Faro/Faro.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = Faro/FaroIOS.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Faro/FaroIOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
@@ -416,11 +518,10 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.faro.Faro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -434,7 +535,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Faro/Faro.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = Faro/FaroIOS.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Faro/FaroIOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
@@ -453,14 +555,69 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.faro.Faro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		F10000000000000000000029 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = FaroWidget/FaroWidget.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = FaroWidget/FaroWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 55QTLX7JV3;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FaroWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.faro.Faro.widget.mertkanibir;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F1000000000000000000002A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = FaroWidget/FaroWidget.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = FaroWidget/FaroWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 55QTLX7JV3;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FaroWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.faro.Faro.widget.mertkanibir;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -483,6 +640,15 @@
 			buildConfigurations = (
 				E000000000000000000000008 /* Debug */,
 				E000000000000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F1000000000000000000002B /* Build configuration list for PBXNativeTarget "FaroWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F10000000000000000000029 /* Debug */,
+				F1000000000000000000002A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

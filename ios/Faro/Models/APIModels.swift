@@ -8,6 +8,10 @@ struct IntakeRequest: Codable {
     let employeeCount: Int
     let state: String
     let annualRevenue: Double
+    var contactFirstName: String? = nil
+    var contactMiddleName: String? = nil
+    var contactLastName: String? = nil
+    var contactEmail: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case businessName = "business_name"
@@ -15,6 +19,10 @@ struct IntakeRequest: Codable {
         case employeeCount = "employee_count"
         case state
         case annualRevenue = "annual_revenue"
+        case contactFirstName = "contact_first_name"
+        case contactMiddleName = "contact_middle_name"
+        case contactLastName = "contact_last_name"
+        case contactEmail = "contact_email"
     }
 }
 
