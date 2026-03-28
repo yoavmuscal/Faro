@@ -194,6 +194,17 @@ class CoverageRequirement(FaroBaseModel):
     confidence: float = Field(default=0.8, ge=0.0, le=1.0)
     trigger_event: Optional[str] = None
 
+    @field_validator("category", mode="before")
+    @classmethod
+    def _normalize_category(cls, value: Any) -> str:
+        if isinstance(value, CoverageCategory):
+            return value.value
+        text = str(value).strip().lower().replace(" ", "_").replace("-", "_")
+        valid = {c.value for c in CoverageCategory}
+        if text in valid:
+            return text
+        return CoverageCategory.recommended.value
+
     @field_validator("type", mode="before")
     @classmethod
     def _normalize_type(cls, value: Any) -> str:
@@ -240,11 +251,32 @@ class CoverageRequirement(FaroBaseModel):
 class CoverageOption(FaroBaseModel):
     type: str
     description: str
-    estimated_premium_low: float
-    estimated_premium_high: float
-    confidence: float = Field(ge=0.0, le=1.0)
+    estimated_premium_low: float = 0
+    estimated_premium_high: float = 0
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
     category: CoverageCategory
     trigger_event: Optional[str] = None
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def _normalize_category(cls, value: Any) -> str:
+        if isinstance(value, CoverageCategory):
+            return value.value
+        text = str(value).strip().lower().replace(" ", "_").replace("-", "_")
+        valid = {c.value for c in CoverageCategory}
+        if text in valid:
+            return text
+        return CoverageCategory.recommended.value
+
+    @field_validator("estimated_premium_low", "estimated_premium_high", mode="before")
+    @classmethod
+    def _normalize_premium(cls, value: Any) -> float:
+        if value is None:
+            return 0.0
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
 
     @classmethod
     def from_requirement(cls, requirement: CoverageRequirement) -> "CoverageOption":
