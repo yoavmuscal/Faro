@@ -458,6 +458,41 @@ private struct OnboardingQuestionCard: View {
     }
 }
 
+// MARK: - Shared Question Card (used by VoiceIntakeView too)
+
+struct QuestionCard: View {
+    let question: String
+    let placeholder: String
+    @Binding var text: String
+    var isMultiline = false
+    var keyboard: FaroTextKeyboard = .default
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            Text(question)
+                .font(FaroType.title2())
+                .foregroundStyle(FaroPalette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if isMultiline {
+                TextEditor(text: $text)
+                    .font(FaroType.body())
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 100, maxHeight: 160)
+                    .padding(FaroSpacing.sm + 2)
+                    .faroGlassCard(cornerRadius: FaroRadius.md, material: .thinMaterial)
+            } else {
+                TextField(placeholder, text: $text)
+                    .font(FaroType.body())
+                    .faroKeyboard(keyboard)
+                    .padding(FaroSpacing.md)
+                    .faroGlassCard(cornerRadius: FaroRadius.md, material: .thinMaterial)
+            }
+        }
+        .padding(.horizontal)
+    }
+}
+
 #Preview {
     NavigationStack {
         OnboardingView()
