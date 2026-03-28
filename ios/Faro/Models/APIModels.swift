@@ -262,3 +262,208 @@ struct StatusResponse: Codable {
         case nextRenewalDays = "next_renewal_days"
     }
 }
+
+// MARK: - Flexible Decoding Helpers
+
+private struct SubmissionLossHistorySnapshot: Decodable {
+    let yearsReviewed: Int?
+    let priorLosses: String?
+    let currentlyInsured: String?
+
+    enum CodingKeys: String, CodingKey {
+        case yearsReviewed = "years_reviewed"
+        case priorLosses = "prior_losses"
+        case currentlyInsured = "currently_insured"
+    }
+}
+
+private extension String {
+    var trimmedOrNil: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeFlexibleStringIfPresent(forKey key: Key) -> String? {
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return value.trimmedOrNil
+        }
+        if let value = try? decodeIfPresent(Int.self, forKey: key) {
+            return String(value)
+        }
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            return String(value)
+        }
+        if let value = try? decodeIfPresent(Bool.self, forKey: key) {
+            return value ? "Yes" : "No"
+        }
+        return nil
+    }
+
+    func decodeFlexibleIntIfPresent(forKey key: Key) -> Int? {
+        if let value = try? decodeIfPresent(Int.self, forKey: key) {
+            return value
+        }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return Int(value)
+        }
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            return Int(value)
+        }
+        return nil
+    }
+
+    func decodeFlexibleDoubleIfPresent(forKey key: Key) -> Double? {
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            return value
+        }
+        if let value = try? decodeIfPresent(Int.self, forKey: key) {
+            return Double(value)
+        }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return Double(value)
+        }
+        return nil
+    }
+
+    func decodeStringArrayOrWrappedStringIfPresent(forKey key: Key) -> [String]? {
+        if let values = try? decodeIfPresent([String].self, forKey: key) {
+            return values.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+        if let value = decodeFlexibleStringIfPresent(forKey: key) {
+            return [value]
+        }
+        return nil
+    }
+}
+
+// MARK: - Flexible Result Decoding
+
+extension ResultsResponse {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        coverageOptions = try container.decode([CoverageOption].self, forKey: .coverageOptions)
+        submissionPacketUrl = container.decodeFlexibleStringIfPresent(forKey: .submissionPacketUrl) ?? ""
+        voiceSummaryUrl = container.decodeFlexibleStringIfPresent(forKey: .voiceSummaryUrl) ?? ""
+        riskProfile = try? container.decodeIfPresent(RiskProfile.self, forKey: .riskProfile)
+        submissionPacket = try? container.decodeIfPresent(SubmissionPacket.self, forKey: .submissionPacket)
+        plainEnglishSummary = container.decodeFlexibleStringIfPresent(forKey: .plainEnglishSummary)
+    }
+}
+
+extension SubmissionPacket {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        submissionDate = container.decodeFlexibleStringIfPresent(forKey: .submissionDate)
+        applicant = try? container.decodeIfPresent(SubmissionApplicant.self, forKey: .applicant)
+        operations = try? container.decodeIfPresent(SubmissionOperations.self, forKey: .operations)
+        requestedCoverages = try? container.decodeIfPresent([SubmissionRequestedCoverage].self, forKey: .requestedCoverages)
+        underwriterNotes = container.decodeStringArrayOrWrappedStringIfPresent(forKey: .underwriterNotes)
+
+        if let losses = try? container.decodeIfPresent([SubmissionLoss].self, forKey: .lossHistory) {
+            lossHistory = losses
+        } else if let snapshot = try? container.decodeIfPresent(SubmissionLossHistorySnapshot.self, forKey: .lossHistory) {
+            var normalized: [SubmissionLoss] = []
+
+            if let priorLosses = snapshot.priorLosses?.trimmedOrNil {
+                normalized.append(
+                    SubmissionLoss(
+                        year: nil,
+                        type: "Prior Losses",
+                        amount: nil,
+                        description: priorLosses
+                    )
+                )
+            }
+
+            if let currentlyInsured = snapshot.currentlyInsured?.trimmedOrNil {
+                let description: String
+                if let yearsReviewed = snapshot.yearsReviewed {
+                    description = "\(currentlyInsured) • \(yearsReviewed)-year review"
+                } else {
+                    description = currentlyInsured
+                }
+
+                normalized.append(
+                    SubmissionLoss(
+                        year: nil,
+                        type: "Current Insurance",
+                        amount: nil,
+                        description: description
+                    )
+                )
+            }
+
+            lossHistory = normalized.isEmpty ? nil : normalized
+        } else {
+            lossHistory = nil
+        }
+    }
+}
+
+extension SubmissionOperations {
+    private enum FlexibleCodingKeys: String, CodingKey {
+        case description
+        case sicCode = "sic_code"
+        case naicsCode = "naics_code"
+        case employees
+        case revenue
+        case payroll
+        case subcontractors
+        case fullTimeEmployees = "full_time_employees"
+        case partTimeEmployees = "part_time_employees"
+        case annualRevenue = "annual_revenue"
+        case annualPayroll = "annual_payroll"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: FlexibleCodingKeys.self)
+
+        description = container.decodeFlexibleStringIfPresent(forKey: .description)
+        sicCode = container.decodeFlexibleStringIfPresent(forKey: .sicCode)
+        naicsCode = container.decodeFlexibleStringIfPresent(forKey: .naicsCode)
+
+        if let nestedEmployees = try? container.decodeIfPresent(SubmissionEmployeeInfo.self, forKey: .employees) {
+            employees = nestedEmployees
+        } else {
+            let fullTime = container.decodeFlexibleIntIfPresent(forKey: .fullTimeEmployees)
+            let partTime = container.decodeFlexibleIntIfPresent(forKey: .partTimeEmployees)
+            if fullTime != nil || partTime != nil {
+                employees = SubmissionEmployeeInfo(
+                    fullTime: fullTime,
+                    partTime: partTime,
+                    total: (fullTime ?? 0) + (partTime ?? 0)
+                )
+            } else {
+                employees = nil
+            }
+        }
+
+        if let nestedRevenue = try? container.decodeIfPresent(SubmissionRevenueInfo.self, forKey: .revenue) {
+            revenue = nestedRevenue
+        } else if let annualRevenue = container.decodeFlexibleDoubleIfPresent(forKey: .annualRevenue) {
+            revenue = SubmissionRevenueInfo(annual: annualRevenue, projectedGrowth: nil)
+        } else {
+            revenue = nil
+        }
+
+        if let nestedPayroll = try? container.decodeIfPresent(SubmissionPayrollInfo.self, forKey: .payroll) {
+            payroll = nestedPayroll
+        } else if let annualPayroll = container.decodeFlexibleDoubleIfPresent(forKey: .annualPayroll) {
+            payroll = SubmissionPayrollInfo(annual: annualPayroll)
+        } else {
+            payroll = nil
+        }
+
+        if let nestedSubcontractors = try? container.decodeIfPresent(SubmissionSubcontractorInfo.self, forKey: .subcontractors) {
+            subcontractors = nestedSubcontractors
+        } else if let usesSubcontractors = try? container.decodeIfPresent(Bool.self, forKey: .subcontractors) {
+            subcontractors = SubmissionSubcontractorInfo(used: usesSubcontractors, details: nil)
+        } else if let subcontractorNote = container.decodeFlexibleStringIfPresent(forKey: .subcontractors) {
+            subcontractors = SubmissionSubcontractorInfo(used: nil, details: subcontractorNote)
+        } else {
+            subcontractors = nil
+        }
+    }
+}
