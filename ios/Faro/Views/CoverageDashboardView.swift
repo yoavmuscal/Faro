@@ -586,7 +586,7 @@ extension ButtonStyle where Self == FaroGlassProminentButtonStyle {
 
 // MARK: - CoverageOption Identifiable for sheet
 
-extension CoverageOption: @retroactive Hashable {
+extension CoverageOption: Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(type)
     }

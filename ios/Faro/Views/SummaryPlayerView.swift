@@ -108,14 +108,19 @@ struct SummaryPlayerView: View {
 final class SummaryAudioPlayer: ObservableObject {
     @Published var isPlaying = false
     private var avPlayer: AVPlayer?
-    private var observer: Any?
+    /// Held for teardown from `deinit` (nonisolated); avoids Swift 6 isolation warnings on `Any?`.
+    nonisolated(unsafe) private var endObserver: NSObjectProtocol?
 
     func play(url: String) {
         guard let audioURL = URL(string: url) else { return }
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
         let item = AVPlayerItem(url: audioURL)
         avPlayer = AVPlayer(playerItem: item)
 
-        observer = NotificationCenter.default.addObserver(
+        endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
             queue: .main
@@ -133,7 +138,9 @@ final class SummaryAudioPlayer: ObservableObject {
     }
 
     deinit {
-        if let observer { NotificationCenter.default.removeObserver(observer) }
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+        }
     }
 }
 
