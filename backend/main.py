@@ -129,6 +129,7 @@ async def get_results(session_id: str):
     if pipeline_status != "complete":
         raise HTTPException(202, "Pipeline not yet complete")
 
+    _VALID_CATEGORIES = {"required", "recommended", "projected"}
     coverage_options = [
         CoverageOption(
             type=c["type"],
@@ -136,7 +137,11 @@ async def get_results(session_id: str):
             estimated_premium_low=c.get("estimated_premium_low", 0),
             estimated_premium_high=c.get("estimated_premium_high", 0),
             confidence=c.get("confidence", 0.8),
-            category=CoverageCategory(c.get("category", "recommended")),
+            category=CoverageCategory(
+                c.get("category", "recommended")
+                if c.get("category") in _VALID_CATEGORIES
+                else "recommended"
+            ),
             trigger_event=c.get("trigger_event"),
         )
         for c in (session.get("coverage_requirements") or [])
