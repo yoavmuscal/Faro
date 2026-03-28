@@ -5,7 +5,28 @@ Output: structured risk profile JSON
 Model:  K2 Think V2 (with Claude fallback)
 """
 import json
+import re
+from typing import Literal
+from pydantic import BaseModel, ValidationError
 from ..llm import chat_with_fallback
+
+
+class RiskProfile(BaseModel):
+    industry: str
+    sic_code: str
+    risk_level: Literal["low", "medium", "high"]
+    primary_exposures: list[str]
+    state_requirements: list[str]
+    employee_implications: list[str]
+    revenue_exposure: str
+    unusual_risks: list[str]
+    reasoning_summary: str
+
+
+def extract_json(raw: str) -> str:
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
+    return match.group(1).strip() if match else raw.strip()
+
 
 SYSTEM_PROMPT = """You are a commercial insurance risk analyst with deep expertise in small business risk assessment.
 You reason carefully and systematically through every risk factor before reaching conclusions.
@@ -51,5 +72,10 @@ async def run(state: dict) -> dict:
         annual_revenue=intake["annual_revenue"],
     )
     raw = await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt)
-    risk_profile = json.loads(raw)
-    return {**state, "risk_profile": risk_profile}
+
+    try:
+        risk_profile = RiskProfile(**json.loads(extract_json(raw)))
+    except (json.JSONDecodeError, ValidationError) as e:
+        raise ValueError(f"Risk profiler failed to parse LLM output: {e}\n\nRaw: {raw}")
+
+    return {**state, "risk_profile": risk_profile.model_dump()}
