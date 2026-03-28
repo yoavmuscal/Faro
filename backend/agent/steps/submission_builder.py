@@ -6,7 +6,7 @@ Model:  K2 Think V2 (with Claude fallback)
 """
 import json
 from datetime import date
-from ..llm import chat_with_fallback
+from ..llm import chat_with_fallback, parse_json_response
 
 SYSTEM_PROMPT = """You are an expert commercial insurance broker who prepares carrier submission packets.
 You know exactly what information underwriters need. Be thorough and precise.
@@ -87,5 +87,5 @@ async def run(state: dict) -> dict:
         today=date.today().isoformat(),
     )
     raw = await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt)
-    submission_packet = json.loads(raw)
+    submission_packet = parse_json_response(raw)
     return {**state, "submission_packet": submission_packet}

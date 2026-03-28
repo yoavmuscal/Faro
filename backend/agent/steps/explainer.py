@@ -27,7 +27,7 @@ Coverage requirements:
 
 Write as if you are talking directly to the owner. Use "you" and "your business".
 Structure it as:
-1. One opening sentence about the overall picture ("Your business type has [X] coverage needs...")
+1. One opening sentence about the overall picture ("Your business has [X] coverage needs...")
 2. For each REQUIRED coverage: one sentence on what it covers in plain English
 3. For each RECOMMENDED coverage: one sentence, framed as "We also recommend..."
 4. One closing sentence about next steps

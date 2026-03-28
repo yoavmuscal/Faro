@@ -2,10 +2,12 @@ import asyncio
 import json
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from dotenv import load_dotenv
 
 from models import (
     IntakeRequest, IntakeResponse,
@@ -16,6 +18,10 @@ from models import (
 import database as db
 from agent.pipeline import run_pipeline
 
+# Load backend-local environment variables for local development.
+load_dotenv(Path(__file__).with_name(".env"))
+load_dotenv(Path(__file__).with_name(".env.local"))
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,6 +30,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Faro Insurance API", lifespan=lifespan)
+PIPELINE_TIMEOUT_SECONDS = 180
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,7 +69,10 @@ async def _run_pipeline_task(session_id: str, intake: dict):
                 pass
 
     try:
-        final_state = await run_pipeline(session_id, intake, broadcast)
+        final_state = await asyncio.wait_for(
+            run_pipeline(session_id, intake, broadcast),
+            timeout=PIPELINE_TIMEOUT_SECONDS,
+        )
         await db.save_session(session_id, {
             "pipeline_status": "complete",
             "risk_profile": final_state.get("risk_profile"),
@@ -71,6 +81,14 @@ async def _run_pipeline_task(session_id: str, intake: dict):
             "plain_english_summary": final_state.get("plain_english_summary"),
             "voice_url": final_state.get("voice_url"),
         })
+    except asyncio.TimeoutError:
+        await db.save_session(
+            session_id,
+            {
+                "pipeline_status": "error",
+                "error": f"Pipeline timed out after {PIPELINE_TIMEOUT_SECONDS}s",
+            },
+        )
     except Exception as e:
         await db.save_session(session_id, {"pipeline_status": "error", "error": str(e)})
 
@@ -105,7 +123,10 @@ async def get_results(session_id: str):
     session = await db.get_session(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
-    if session.get("pipeline_status") != "complete":
+    pipeline_status = session.get("pipeline_status")
+    if pipeline_status == "error":
+        raise HTTPException(500, session.get("error", "Pipeline failed"))
+    if pipeline_status != "complete":
         raise HTTPException(202, "Pipeline not yet complete")
 
     coverage_options = [
@@ -140,6 +161,11 @@ async def get_status(session_id: str):
         return StatusResponse(status=CoverageStatus.unknown, message="No coverage data found")
 
     pipeline_status = session.get("pipeline_status", "pending")
+    if pipeline_status == "error":
+        return StatusResponse(
+            status=CoverageStatus.gap_detected,
+            message=f"Analysis failed: {session.get('error', 'unknown error')}",
+        )
     if pipeline_status != "complete":
         return StatusResponse(status=CoverageStatus.unknown, message="Analysis in progress...")
 

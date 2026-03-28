@@ -5,7 +5,7 @@ Output: coverage requirements list with priority flags
 Model:  K2 Think V2 (with Claude fallback)
 """
 import json
-from ..llm import chat_with_fallback
+from ..llm import chat_with_fallback, parse_json_response
 
 SYSTEM_PROMPT = """You are a commercial insurance coverage specialist.
 Given a business risk profile, you determine exactly which insurance policies are needed.
@@ -73,5 +73,5 @@ async def run(state: dict) -> dict:
         annual_revenue=intake["annual_revenue"],
     )
     raw = await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt)
-    coverage_requirements = json.loads(raw)
+    coverage_requirements = parse_json_response(raw)
     return {**state, "coverage_requirements": coverage_requirements}
