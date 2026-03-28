@@ -54,8 +54,8 @@ xcuserdata/
 .vscode/
 *.swp
 *.swo
-*.claude
 .claude/
+.cursor/
 
 # AWS / Serverless
 .serverless/
