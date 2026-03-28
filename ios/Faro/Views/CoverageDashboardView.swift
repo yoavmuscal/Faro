@@ -286,15 +286,16 @@ struct CoverageDashboardView: View {
             Button {
                 Task { await exportPDF() }
             } label: {
-                Label("Export submission PDF", systemImage: "arrow.up.doc.fill")
+                Label(vm.isGeneratingPDF ? "Generating PDF…" : "Export full PDF", systemImage: "arrow.up.doc.fill")
                     .font(FaroType.headline())
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
             }
             .buttonStyle(.faroGlassProminent)
+            .disabled(vm.isGeneratingPDF)
 
             if let url = pdfURL {
-                ShareLink(item: url, preview: SharePreview("Faro submission", image: Image(systemName: "doc.fill"))) {
+                ShareLink(item: url, preview: SharePreview("Faro export", image: Image(systemName: "doc.fill"))) {
                     Label("Share PDF", systemImage: "square.and.arrow.up")
                         .font(FaroType.headline())
                         .frame(maxWidth: .infinity)
@@ -306,6 +307,8 @@ struct CoverageDashboardView: View {
     }
 
     private func exportPDF() async {
+        vm.isGeneratingPDF = true
+        defer { vm.isGeneratingPDF = false }
         pdfURL = PDFBuilder.build(from: results, businessName: businessName)
     }
 

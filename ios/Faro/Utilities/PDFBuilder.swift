@@ -8,7 +8,7 @@ import AppKit
 
 enum PDFBuilder {
 
-    /// Generates a carrier-ready submission packet PDF and writes it to a temp file.
+    /// Generates a full export PDF (overview, summary, risk profile, submission packet, coverage lines) and writes it to a temp file.
     static func build(from results: ResultsResponse, businessName: String = "Business") -> URL? {
         #if os(iOS)
         return buildIOS(from: results, businessName: businessName)
@@ -64,6 +64,26 @@ enum PDFBuilder {
             let boldBody: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: 11, weight: .semibold),
             ]
+
+            let exportSections = PDFExportContent.sections(for: results, businessName: businessName)
+            drawExportSectionsIOS(
+                ctx: ctx,
+                sections: exportSections,
+                margin: margin,
+                contentWidth: contentWidth,
+                pageHeight: pageHeight,
+                sectionAttrs: sectionAttrs,
+                bodyAttrs: bodyAttrs,
+                y: &y
+            )
+
+            ensureSpaceIOS(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: 36)
+            ("Coverage analysis" as NSString).draw(
+                in: CGRect(x: margin, y: y, width: contentWidth, height: 22),
+                withAttributes: sectionAttrs
+            )
+            y += 28
+            y = drawDividerIOS(ctx: ctx.cgContext, y: y, margin: margin, width: contentWidth)
 
             let order: [CoverageCategory] = [.required, .recommended, .projected]
             let sorted = results.coverageOptions.sorted {
@@ -140,12 +160,60 @@ enum PDFBuilder {
         }
 
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Faro_Submission_\(businessName.replacingOccurrences(of: " ", with: "_")).pdf")
+            .appendingPathComponent("Faro_Export_\(businessName.replacingOccurrences(of: " ", with: "_")).pdf")
         do {
             try data.write(to: url)
             return url
         } catch {
             return nil
+        }
+    }
+
+    private static func ensureSpaceIOS(
+        ctx: UIGraphicsPDFRendererContext,
+        y: inout CGFloat,
+        margin: CGFloat,
+        pageHeight: CGFloat,
+        needed: CGFloat,
+        bottomReserve: CGFloat = 80
+    ) {
+        if y + needed <= pageHeight - bottomReserve { return }
+        ctx.beginPage()
+        y = margin
+    }
+
+    private static func drawExportSectionsIOS(
+        ctx: UIGraphicsPDFRendererContext,
+        sections: [PDFExportContent.Section],
+        margin: CGFloat,
+        contentWidth: CGFloat,
+        pageHeight: CGFloat,
+        sectionAttrs: [NSAttributedString.Key: Any],
+        bodyAttrs: [NSAttributedString.Key: Any],
+        y: inout CGFloat
+    ) {
+        let titleLineHeight: CGFloat = 22
+        let spacingAfterTitle: CGFloat = 6
+        for section in sections {
+            ensureSpaceIOS(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: titleLineHeight + spacingAfterTitle)
+            (section.title as NSString).draw(
+                in: CGRect(x: margin, y: y, width: contentWidth, height: titleLineHeight),
+                withAttributes: sectionAttrs
+            )
+            y += titleLineHeight + spacingAfterTitle
+
+            for paragraph in section.paragraphs {
+                let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty { continue }
+                let h = heightForString(trimmed, width: contentWidth, attributes: bodyAttrs)
+                ensureSpaceIOS(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: h + 8)
+                (trimmed as NSString).draw(
+                    in: CGRect(x: margin, y: y, width: contentWidth, height: h),
+                    withAttributes: bodyAttrs
+                )
+                y += h + 8
+            }
+            y += 12
         }
     }
 
@@ -222,6 +290,26 @@ enum PDFBuilder {
             .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
         ]
 
+        let exportSections = PDFExportContent.sections(for: results, businessName: businessName)
+        drawExportSectionsMac(
+            ctx: ctx,
+            sections: exportSections,
+            margin: margin,
+            contentWidth: contentWidth,
+            pageHeight: pageHeight,
+            sectionAttrs: sectionAttrs,
+            bodyAttrs: bodyAttrs,
+            y: &y
+        )
+
+        ensureSpaceMac(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: 36)
+        ("Coverage analysis" as NSString).draw(
+            in: CGRect(x: margin, y: y, width: contentWidth, height: 22),
+            withAttributes: sectionAttrs
+        )
+        y += 28
+        y = drawDividerMac(ctx: ctx, y: y, margin: margin, width: contentWidth)
+
         let order: [CoverageCategory] = [.required, .recommended, .projected]
         let sorted = results.coverageOptions.sorted {
             (order.firstIndex(of: $0.category) ?? 99) < (order.firstIndex(of: $1.category) ?? 99)
@@ -229,16 +317,7 @@ enum PDFBuilder {
 
         for option in sorted {
             if y > pageHeight - 140 {
-                NSGraphicsContext.restoreGraphicsState()
-                ctx.restoreGState()
-                ctx.endPDFPage()
-                ctx.beginPDFPage(nil)
-                ctx.saveGState()
-                ctx.translateBy(x: 0, y: pageHeight)
-                ctx.scaleBy(x: 1, y: -1)
-                NSGraphicsContext.saveGraphicsState()
-                NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
-                y = margin
+                macBeginNewPage(ctx: ctx, pageHeight: pageHeight, y: &y, margin: margin)
             }
 
             let badgeAttrs: [NSAttributedString.Key: Any] = [
@@ -289,16 +368,7 @@ enum PDFBuilder {
         }
 
         if y > pageHeight - 80 {
-            NSGraphicsContext.restoreGraphicsState()
-            ctx.restoreGState()
-            ctx.endPDFPage()
-            ctx.beginPDFPage(nil)
-            ctx.saveGState()
-            ctx.translateBy(x: 0, y: pageHeight)
-            ctx.scaleBy(x: 1, y: -1)
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
-            y = margin
+            macBeginNewPage(ctx: ctx, pageHeight: pageHeight, y: &y, margin: margin)
         }
         y += 10
         let footerAttrs: [NSAttributedString.Key: Any] = [
@@ -318,12 +388,72 @@ enum PDFBuilder {
         ctx.closePDF()
 
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Faro_Submission_\(businessName.replacingOccurrences(of: " ", with: "_")).pdf")
+            .appendingPathComponent("Faro_Export_\(businessName.replacingOccurrences(of: " ", with: "_")).pdf")
         do {
             try (data as Data).write(to: url)
             return url
         } catch {
             return nil
+        }
+    }
+
+    private static func macBeginNewPage(ctx: CGContext, pageHeight: CGFloat, y: inout CGFloat, margin: CGFloat) {
+        NSGraphicsContext.restoreGraphicsState()
+        ctx.restoreGState()
+        ctx.endPDFPage()
+        ctx.beginPDFPage(nil)
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: pageHeight)
+        ctx.scaleBy(x: 1, y: -1)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+        y = margin
+    }
+
+    private static func ensureSpaceMac(
+        ctx: CGContext,
+        y: inout CGFloat,
+        margin: CGFloat,
+        pageHeight: CGFloat,
+        needed: CGFloat,
+        bottomReserve: CGFloat = 80
+    ) {
+        if y + needed <= pageHeight - bottomReserve { return }
+        macBeginNewPage(ctx: ctx, pageHeight: pageHeight, y: &y, margin: margin)
+    }
+
+    private static func drawExportSectionsMac(
+        ctx: CGContext,
+        sections: [PDFExportContent.Section],
+        margin: CGFloat,
+        contentWidth: CGFloat,
+        pageHeight: CGFloat,
+        sectionAttrs: [NSAttributedString.Key: Any],
+        bodyAttrs: [NSAttributedString.Key: Any],
+        y: inout CGFloat
+    ) {
+        let titleLineHeight: CGFloat = 22
+        let spacingAfterTitle: CGFloat = 6
+        for section in sections {
+            ensureSpaceMac(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: titleLineHeight + spacingAfterTitle)
+            (section.title as NSString).draw(
+                in: CGRect(x: margin, y: y, width: contentWidth, height: titleLineHeight),
+                withAttributes: sectionAttrs
+            )
+            y += titleLineHeight + spacingAfterTitle
+
+            for paragraph in section.paragraphs {
+                let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty { continue }
+                let h = heightForString(trimmed, width: contentWidth, attributes: bodyAttrs)
+                ensureSpaceMac(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: h + 8)
+                (trimmed as NSString).draw(
+                    in: CGRect(x: margin, y: y, width: contentWidth, height: h),
+                    withAttributes: bodyAttrs
+                )
+                y += h + 8
+            }
+            y += 12
         }
     }
 
