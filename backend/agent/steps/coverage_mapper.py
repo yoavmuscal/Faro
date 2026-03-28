@@ -5,6 +5,11 @@ Output: coverage requirements list with priority flags
 Model:  K2 Think V2 (with Claude fallback)
 """
 import json
+
+from pydantic import ValidationError
+
+from models import validate_coverage_requirements_payload, validate_risk_profile_payload
+
 from ..llm import chat_with_fallback, parse_json_response
 
 SYSTEM_PROMPT = """You are a commercial insurance coverage specialist.
@@ -57,21 +62,27 @@ Base premium estimates on typical market rates for this business size and state.
 
 
 async def run(state: dict) -> dict:
-    # SAFETY: The raw LLM response is parsed as JSON and stored directly in
-    # pipeline state.  Before this node's output is surfaced to the client via
-    # GET /results, the main.py endpoint re-validates every item through the
-    # CoverageOption Pydantic model, which enforces field types, the
-    # CoverageCategory enum boundary, confidence range [0, 1], and strips any
-    # unexpected keys.  Do NOT bypass that validation layer when consuming
-    # `coverage_requirements` elsewhere in the pipeline.
     intake = state["intake"]
+    risk_profile = validate_risk_profile_payload(state["risk_profile"])
     prompt = USER_PROMPT_TEMPLATE.format(
-        risk_profile_json=json.dumps(state["risk_profile"], indent=2),
+        risk_profile_json=json.dumps(risk_profile.model_dump(mode="json"), indent=2),
         business_name=intake["business_name"],
         state=intake["state"],
         employee_count=intake["employee_count"],
         annual_revenue=intake["annual_revenue"],
     )
     raw = await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt)
-    coverage_requirements = parse_json_response(raw)
-    return {**state, "coverage_requirements": coverage_requirements}
+    try:
+        parsed = parse_json_response(raw)
+        coverage_requirements = validate_coverage_requirements_payload(parsed)
+    except (ValueError, ValidationError, json.JSONDecodeError) as e:
+        snippet = (raw[:500] + "…") if isinstance(raw, str) and len(raw) > 500 else raw
+        raise ValueError(f"Coverage mapper failed to parse LLM output: {e}\n\nRaw: {snippet!r}")
+
+    return {
+        **state,
+        "coverage_requirements": [
+            requirement.model_dump(mode="json")
+            for requirement in coverage_requirements
+        ],
+    }

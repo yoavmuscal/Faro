@@ -8,6 +8,7 @@ import os
 import re
 import httpx
 import database as db
+from models import validate_coverage_requirements_payload, validate_risk_profile_payload
 from ..llm import chat_with_fallback
 
 logger = logging.getLogger(__name__)
@@ -91,14 +92,30 @@ async def synthesize_speech(session_id: str, text: str) -> str:
 async def run(state: dict) -> dict:
     intake = state["intake"]
     sid = state["session_id"]
-    risk = state.get("risk_profile") or {}
-    rows = state.get("coverage_requirements") or []
+    risk = (
+        validate_risk_profile_payload(state["risk_profile"])
+        if state.get("risk_profile") is not None
+        else None
+    )
+    rows = validate_coverage_requirements_payload(state.get("coverage_requirements") or [])
 
-    now = [c for c in rows if c.get("category") in ("required", "recommended")]
-    later = [c for c in rows if c.get("category") == "projected"]
+    now = [
+        c.model_dump(mode="json")
+        for c in rows
+        if c.category.value in ("required", "recommended")
+    ]
+    later = [
+        c.model_dump(mode="json")
+        for c in rows
+        if c.category.value == "projected"
+    ]
 
-    industry = (risk.get("industry") or (intake.get("description") or "")[:120] or "General business").strip()
-    ctx = (risk.get("reasoning_summary") or "See coverage lists below.").strip()
+    industry = (
+        (risk.industry if risk else None)
+        or (intake.get("description") or "")[:120]
+        or "General business"
+    ).strip()
+    ctx = ((risk.reasoning_summary if risk else None) or "See coverage lists below.").strip()
 
     prompt = USER_PROMPT_TEMPLATE.format(
         business_name=intake["business_name"],

@@ -7,20 +7,9 @@ Model:  K2 Think V2 (with Claude fallback)
 import json
 
 from ..llm import chat_with_fallback, parse_json_response
-from typing import Literal
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
-
-class RiskProfile(BaseModel):
-    industry: str
-    sic_code: str
-    risk_level: Literal["low", "medium", "high"]
-    primary_exposures: list[str]
-    state_requirements: list[str]
-    employee_implications: list[str]
-    revenue_exposure: str
-    unusual_risks: list[str]
-    reasoning_summary: str
+from models import validate_risk_profile_payload
 
 
 SYSTEM_PROMPT = """You are a commercial insurance risk analyst with deep expertise in small business risk assessment.
@@ -69,7 +58,7 @@ async def run(state: dict) -> dict:
     raw = await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt)
     try:
         parsed = parse_json_response(raw)
-        risk_profile = RiskProfile(**parsed)
+        risk_profile = validate_risk_profile_payload(parsed)
     except (ValueError, ValidationError, json.JSONDecodeError) as e:
         snippet = (raw[:500] + "…") if isinstance(raw, str) and len(raw) > 500 else raw
         raise ValueError(f"Risk profiler failed to parse LLM output: {e}\n\nRaw: {snippet!r}")
