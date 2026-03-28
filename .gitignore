@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.pycache/
 *.py[cod]
 *$py.class
 *.so
@@ -13,6 +14,9 @@ build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
 
 # Environment
 .env
@@ -30,12 +34,14 @@ build/
 *.xcworkspace/xcuserdata/
 *.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
 DerivedData/
+*.xcuserstate
 *.ipa
 *.dSYM.zip
 *.dSYM
 build/
 Pods/
 .build/
+.swiftpm/
 *.moved-aside
 *.pbxuser
 !default.pbxuser
@@ -48,12 +54,14 @@ Pods/
 *.xccheckout
 *.xcscmblueprint
 xcuserdata/
+ios/.derivedData/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+.zed/
 .claude/
 .cursor/
 
@@ -65,3 +73,7 @@ samconfig.toml
 # Logs
 *.log
 logs/
+
+# Patch / merge leftovers
+*.orig
+*.rej

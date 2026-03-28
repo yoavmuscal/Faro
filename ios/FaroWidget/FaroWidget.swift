@@ -10,12 +10,18 @@ struct CoverageEntry: TimelineEntry {
     let businessName: String
     let headline: String
     let message: String
+    let isInProgress: Bool
+    let completedSteps: Int
+    let totalSteps: Int
     let nextRenewalDays: Int?
     let policyCount: Int
     let requiredCount: Int
     let recommendedCount: Int
     let projectedCount: Int
     let topCoverageType: String?
+    let nextActionTitle: String
+    let destination: WidgetDestination
+    let coverageLines: [WidgetCoverageLine]
     let premiumLow: Double
     let premiumHigh: Double
     let averageConfidence: Double
@@ -26,15 +32,48 @@ struct CoverageEntry: TimelineEntry {
         businessName: "Northwind Studio",
         headline: "Coverage looks strong",
         message: "3 core protections in place",
+        isInProgress: false,
+        completedSteps: 4,
+        totalSteps: 4,
         nextRenewalDays: nil,
         policyCount: 4,
         requiredCount: 3,
         recommendedCount: 1,
         projectedCount: 0,
         topCoverageType: "General Liability",
+        nextActionTitle: "Open dashboard",
+        destination: .coverage,
+        coverageLines: [
+            WidgetCoverageLine(title: "General Liability", category: .required, triggerEvent: nil),
+            WidgetCoverageLine(title: "Workers' Compensation", category: .required, triggerEvent: nil),
+            WidgetCoverageLine(title: "Cyber Liability", category: .recommended, triggerEvent: nil)
+        ],
         premiumLow: 3200,
         premiumHigh: 4700,
         averageConfidence: 0.89
+    )
+
+    static let inProgressPreview = CoverageEntry(
+        date: .now,
+        status: .unknown,
+        businessName: "Harbor Electric",
+        headline: "Analysis in progress",
+        message: "Faro is reasoning through coverage options",
+        isInProgress: true,
+        completedSteps: 2,
+        totalSteps: 4,
+        nextRenewalDays: nil,
+        policyCount: 0,
+        requiredCount: 0,
+        recommendedCount: 0,
+        projectedCount: 0,
+        topCoverageType: nil,
+        nextActionTitle: "Open analysis",
+        destination: .analyze,
+        coverageLines: [],
+        premiumLow: 0,
+        premiumHigh: 0,
+        averageConfidence: 0
     )
 
     static let gapPreview = CoverageEntry(
@@ -43,16 +82,35 @@ struct CoverageEntry: TimelineEntry {
         businessName: "Harbor Electric",
         headline: "New exposures spotted",
         message: "Review Cyber Liability as you grow",
+        isInProgress: false,
+        completedSteps: 4,
+        totalSteps: 4,
         nextRenewalDays: nil,
         policyCount: 5,
         requiredCount: 2,
         recommendedCount: 1,
         projectedCount: 2,
         topCoverageType: "Cyber Liability",
+        nextActionTitle: "Review gaps",
+        destination: .coverage,
+        coverageLines: [
+            WidgetCoverageLine(title: "General Liability", category: .required, triggerEvent: nil),
+            WidgetCoverageLine(title: "Umbrella", category: .recommended, triggerEvent: nil),
+            WidgetCoverageLine(title: "Cyber Liability", category: .projected, triggerEvent: "As staff and customer records scale")
+        ],
         premiumLow: 5400,
         premiumHigh: 7600,
         averageConfidence: 0.82
     )
+
+    var widgetURL: URL? {
+        URL(string: "faro://\(destination.rawValue)")
+    }
+
+    var progressFraction: Double {
+        guard totalSteps > 0 else { return 0 }
+        return Double(completedSteps) / Double(totalSteps)
+    }
 }
 
 enum WidgetCoverageStatus: String, Codable {
@@ -114,17 +172,64 @@ enum WidgetCoverageStatus: String, Codable {
     }
 }
 
+enum WidgetDestination: String, Decodable {
+    case analyze
+    case coverage
+    case summary
+    case submission
+}
+
+enum WidgetCoverageLineCategory: String, Decodable {
+    case required
+    case recommended
+    case projected
+
+    var tint: Color {
+        switch self {
+        case .required:
+            return Color(red: 0.78, green: 0.27, blue: 0.26)
+        case .recommended:
+            return Color(red: 0.29, green: 0.44, blue: 0.66)
+        case .projected:
+            return Color(red: 0.62, green: 0.49, blue: 0.24)
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .required:
+            return "Required"
+        case .recommended:
+            return "Recommended"
+        case .projected:
+            return "Projected"
+        }
+    }
+}
+
+struct WidgetCoverageLine: Decodable {
+    let title: String
+    let category: WidgetCoverageLineCategory
+    let triggerEvent: String?
+}
+
 private struct WidgetSnapshot: Decodable {
     let businessName: String
     let status: WidgetCoverageStatus
     let headline: String
     let message: String
+    let isInProgress: Bool
+    let completedSteps: Int
+    let totalSteps: Int
     let nextRenewalDays: Int?
     let policyCount: Int
     let requiredCount: Int
     let recommendedCount: Int
     let projectedCount: Int
     let topCoverageType: String?
+    let nextActionTitle: String
+    let destination: WidgetDestination
+    let coverageLines: [WidgetCoverageLine]
     let premiumLow: Double
     let premiumHigh: Double
     let averageConfidence: Double
@@ -142,7 +247,8 @@ struct CoverageProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<CoverageEntry>) -> Void) {
         let entry = loadEntry()
-        let next = Calendar.current.date(byAdding: .minute, value: 30, to: .now) ?? .now.addingTimeInterval(1800)
+        let refreshMinutes = entry.isInProgress ? 5 : 30
+        let next = Calendar.current.date(byAdding: .minute, value: refreshMinutes, to: .now) ?? .now.addingTimeInterval(Double(refreshMinutes * 60))
         completion(Timeline(entries: [entry], policy: .after(next)))
     }
 
@@ -159,12 +265,18 @@ struct CoverageProvider: TimelineProvider {
                 businessName: snapshot.businessName,
                 headline: snapshot.headline,
                 message: snapshot.message,
+                isInProgress: snapshot.isInProgress,
+                completedSteps: snapshot.completedSteps,
+                totalSteps: snapshot.totalSteps,
                 nextRenewalDays: snapshot.nextRenewalDays,
                 policyCount: snapshot.policyCount,
                 requiredCount: snapshot.requiredCount,
                 recommendedCount: snapshot.recommendedCount,
                 projectedCount: snapshot.projectedCount,
                 topCoverageType: snapshot.topCoverageType,
+                nextActionTitle: snapshot.nextActionTitle,
+                destination: snapshot.destination,
+                coverageLines: snapshot.coverageLines,
                 premiumLow: snapshot.premiumLow,
                 premiumHigh: snapshot.premiumHigh,
                 averageConfidence: snapshot.averageConfidence
@@ -181,12 +293,18 @@ struct CoverageProvider: TimelineProvider {
             businessName: defaults.string(forKey: "business_name") ?? "Your Business",
             headline: defaults.string(forKey: "coverage_message") ?? "Open Faro to analyze",
             message: "Open the app to generate a fresh coverage snapshot",
+            isInProgress: false,
+            completedSteps: 0,
+            totalSteps: 4,
             nextRenewalDays: defaults.object(forKey: "next_renewal_days") as? Int,
             policyCount: defaults.integer(forKey: "policy_count"),
             requiredCount: 0,
             recommendedCount: 0,
             projectedCount: 0,
             topCoverageType: nil,
+            nextActionTitle: "Open Faro",
+            destination: .analyze,
+            coverageLines: [],
             premiumLow: 0,
             premiumHigh: 0,
             averageConfidence: 0
@@ -200,6 +318,7 @@ struct FaroWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: CoverageProvider()) { entry in
             FaroWidgetView(entry: entry)
+                .widgetURL(entry.widgetURL)
                 .containerBackground(for: .widget) {
                     Color.clear
                 }
@@ -270,17 +389,27 @@ private struct SmallWidgetView: View {
 
             Text(entry.businessName)
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color(red: 0.16, green: 0.15, blue: 0.20))
+                .foregroundStyle(WidgetPalette.primaryText)
                 .lineLimit(2)
 
-            Text(entry.headline)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundStyle(Color(red: 0.31, green: 0.29, blue: 0.38))
-                .lineLimit(2)
+            if entry.isInProgress {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(entry.headline)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(entry.status.tint)
+                        .lineLimit(1)
+                    ProgressMeter(entry: entry)
+                }
+            } else {
+                Text(entry.headline)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(WidgetPalette.secondaryText)
+                    .lineLimit(2)
 
-            HStack(spacing: 8) {
-                MetricChip(title: "Policies", value: "\(entry.policyCount)", compact: true)
-                MetricChip(title: "Req", value: "\(entry.requiredCount)", compact: true)
+                HStack(spacing: 8) {
+                    MetricChip(title: "Policies", value: "\(entry.policyCount)", compact: true)
+                    MetricChip(title: "Req", value: "\(entry.requiredCount)", compact: true)
+                }
             }
         }
         .padding(16)
@@ -298,7 +427,7 @@ private struct MediumWidgetView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(entry.businessName)
                         .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color(red: 0.16, green: 0.15, blue: 0.20))
+                        .foregroundStyle(WidgetPalette.primaryText)
                         .lineLimit(2)
 
                     Text(entry.headline)
@@ -308,15 +437,21 @@ private struct MediumWidgetView: View {
 
                     Text(entry.message)
                         .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color(red: 0.37, green: 0.35, blue: 0.44))
+                        .foregroundStyle(WidgetPalette.secondaryText)
                         .lineLimit(2)
+
+                    if entry.isInProgress {
+                        ProgressMeter(entry: entry)
+                    } else {
+                        ActionPill(title: entry.nextActionTitle, tint: entry.status.tint)
+                    }
                 }
 
                 Spacer(minLength: 0)
 
                 VStack(alignment: .trailing, spacing: 8) {
                     MetricChip(title: "Policies", value: "\(entry.policyCount)", compact: false)
-                    MetricChip(title: "Confidence", value: "\(Int(entry.averageConfidence * 100))%", compact: false)
+                    MetricChip(title: "Confidence", value: confidenceText, compact: false)
                 }
             }
 
@@ -327,6 +462,10 @@ private struct MediumWidgetView: View {
             }
         }
         .padding(16)
+    }
+
+    private var confidenceText: String {
+        entry.isInProgress ? "..." : "\(Int(entry.averageConfidence * 100))%"
     }
 }
 
@@ -340,7 +479,7 @@ private struct LargeWidgetView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(entry.businessName)
                     .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.16, green: 0.15, blue: 0.20))
+                    .foregroundStyle(WidgetPalette.primaryText)
                     .lineLimit(2)
 
                 Text(entry.headline)
@@ -350,33 +489,51 @@ private struct LargeWidgetView: View {
 
                 Text(entry.message)
                     .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color(red: 0.37, green: 0.35, blue: 0.44))
+                    .foregroundStyle(WidgetPalette.secondaryText)
                     .lineLimit(2)
             }
 
-            HStack(spacing: 10) {
-                MetricCard(title: "Policies", value: "\(entry.policyCount)", accent: entry.status.tint)
-                MetricCard(title: "Premium", value: premiumText, accent: Color(red: 0.18, green: 0.47, blue: 0.34))
-                MetricCard(title: "Confidence", value: "\(Int(entry.averageConfidence * 100))%", accent: Color(red: 0.29, green: 0.40, blue: 0.63))
-            }
+            if entry.isInProgress {
+                VStack(alignment: .leading, spacing: 10) {
+                    ProgressMeter(entry: entry)
 
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    CoverageCountPill(title: "Required", value: entry.requiredCount, tint: entry.status.tint.opacity(0.92))
-                    CoverageCountPill(title: "Recommended", value: entry.recommendedCount, tint: Color(red: 0.31, green: 0.45, blue: 0.65))
-                    CoverageCountPill(title: "Projected", value: entry.projectedCount, tint: Color(red: 0.63, green: 0.50, blue: 0.24))
+                    HStack(spacing: 10) {
+                        MetricCard(title: "Steps", value: "\(entry.completedSteps)/\(entry.totalSteps)", accent: entry.status.tint)
+                        MetricCard(title: "Next", value: "Coverage", accent: Color(red: 0.29, green: 0.40, blue: 0.63))
+                        MetricCard(title: "Action", value: "Watch", accent: Color(red: 0.18, green: 0.47, blue: 0.34))
+                    }
+                }
+            } else {
+                HStack(spacing: 10) {
+                    MetricCard(title: "Policies", value: "\(entry.policyCount)", accent: entry.status.tint)
+                    MetricCard(title: "Premium", value: premiumText, accent: Color(red: 0.18, green: 0.47, blue: 0.34))
+                    MetricCard(title: "Confidence", value: "\(Int(entry.averageConfidence * 100))%", accent: Color(red: 0.29, green: 0.40, blue: 0.63))
                 }
 
-                if let topCoverageType = entry.topCoverageType {
-                    Label(topCoverageType, systemImage: "sparkles")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color(red: 0.22, green: 0.21, blue: 0.28))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color.white.opacity(0.7))
-                        )
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        CoverageCountPill(title: "Required", value: entry.requiredCount, tint: entry.status.tint.opacity(0.92))
+                        CoverageCountPill(title: "Recommended", value: entry.recommendedCount, tint: Color(red: 0.31, green: 0.45, blue: 0.65))
+                        CoverageCountPill(title: "Projected", value: entry.projectedCount, tint: Color(red: 0.63, green: 0.50, blue: 0.24))
+                    }
+
+                    if !entry.coverageLines.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(Array(entry.coverageLines.enumerated()), id: \.offset) { _, line in
+                                CoverageLineRow(line: line)
+                            }
+                        }
+                    } else if let topCoverageType = entry.topCoverageType {
+                        Label(topCoverageType, systemImage: "sparkles")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color(red: 0.22, green: 0.21, blue: 0.28))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color.white.opacity(0.7))
+                            )
+                    }
                 }
             }
         }
@@ -388,10 +545,81 @@ private struct LargeWidgetView: View {
         if highValue <= 0 {
             return "TBD"
         }
-        if entry.premiumHigh > 9999 {
+        if highValue > 9999 {
             return "$\(highValue / 1000)k"
         }
         return "$\(highValue)"
+    }
+}
+
+private struct CoverageLineRow: View {
+    let line: WidgetCoverageLine
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle()
+                .fill(line.category.tint)
+                .frame(width: 8, height: 8)
+                .padding(.top, 5)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(line.title)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(WidgetPalette.primaryText)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+
+                    Text(line.category.label)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(line.category.tint)
+                }
+
+                if let triggerEvent = line.triggerEvent, !triggerEvent.isEmpty {
+                    Text(triggerEvent)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(WidgetPalette.secondaryText)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.72))
+        )
+    }
+}
+
+private struct ProgressMeter: View {
+    let entry: CoverageEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Pipeline")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(WidgetPalette.secondaryText)
+                Spacer(minLength: 0)
+                Text("\(entry.completedSteps)/\(max(entry.totalSteps, 1))")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(entry.status.tint)
+            }
+
+            GeometryReader { proxy in
+                let width = proxy.size.width
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(0.78))
+                    Capsule(style: .continuous)
+                        .fill(entry.status.tint)
+                        .frame(width: max(width * entry.progressFraction, width * 0.12))
+                }
+            }
+            .frame(height: 8)
+        }
     }
 }
 
@@ -400,7 +628,7 @@ private struct WidgetHeader: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Label(entry.status.label, systemImage: entry.status.icon)
+            Label(entry.isInProgress ? "Working" : entry.status.label, systemImage: entry.status.icon)
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(entry.status.tint)
                 .padding(.horizontal, 10)
@@ -412,11 +640,21 @@ private struct WidgetHeader: View {
 
             Spacer(minLength: 0)
 
-            Text("FARO")
-                .font(.system(size: 10, weight: .black, design: .rounded))
-                .kerning(1.2)
-                .foregroundStyle(Color(red: 0.39, green: 0.37, blue: 0.46))
+            Text(relativeUpdatedAt)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(WidgetPalette.tertiaryText)
         }
+    }
+
+    private var relativeUpdatedAt: String {
+        let minutes = max(0, Int(Date().timeIntervalSince(entry.date) / 60))
+        if minutes == 0 {
+            return "Now"
+        }
+        if minutes < 60 {
+            return "\(minutes)m"
+        }
+        return "\(minutes / 60)h"
     }
 }
 
@@ -429,10 +667,10 @@ private struct MetricChip: View {
         VStack(alignment: .leading, spacing: compact ? 2 : 4) {
             Text(title.uppercased())
                 .font(.system(size: compact ? 8 : 9, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.45, green: 0.42, blue: 0.51))
+                .foregroundStyle(WidgetPalette.tertiaryText)
             Text(value)
                 .font(.system(size: compact ? 14 : 16, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.16, green: 0.15, blue: 0.20))
+                .foregroundStyle(WidgetPalette.primaryText)
         }
         .padding(.horizontal, compact ? 8 : 10)
         .padding(.vertical, compact ? 6 : 8)
@@ -455,7 +693,7 @@ private struct MetricCard: View {
                 .foregroundStyle(accent.opacity(0.9))
             Text(value)
                 .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(red: 0.16, green: 0.15, blue: 0.20))
+                .foregroundStyle(WidgetPalette.primaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
@@ -463,6 +701,23 @@ private struct MetricCard: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.white.opacity(0.78))
         )
+    }
+}
+
+private struct ActionPill: View {
+    let title: String
+    let tint: Color
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(tint.opacity(0.12))
+            )
     }
 }
 
@@ -488,17 +743,23 @@ private struct CoverageCountPill: View {
     }
 }
 
+private enum WidgetPalette {
+    static let primaryText = Color(red: 0.16, green: 0.15, blue: 0.20)
+    static let secondaryText = Color(red: 0.37, green: 0.35, blue: 0.44)
+    static let tertiaryText = Color(red: 0.45, green: 0.42, blue: 0.51)
+}
+
 #Preview("Small", as: .systemSmall) {
     FaroWidget()
 } timeline: {
     CoverageEntry.placeholder
-    CoverageEntry.gapPreview
+    CoverageEntry.inProgressPreview
 }
 
 #Preview("Medium", as: .systemMedium) {
     FaroWidget()
 } timeline: {
-    CoverageEntry.placeholder
+    CoverageEntry.gapPreview
 }
 
 #Preview("Large", as: .systemLarge) {

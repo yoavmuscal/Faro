@@ -42,10 +42,23 @@ struct FaroRootView: View {
     @State private var section: FaroSection = .analyze
 
     var body: some View {
-        if appState.isSignedIn {
-            mainContent
-        } else {
-            WelcomeView()
+        Group {
+            if appState.isSignedIn {
+                mainContent
+            } else {
+                WelcomeView()
+            }
+        }
+        .onAppear {
+            syncSectionFromAppState(appState.selectedSectionRawValue)
+        }
+        .onChange(of: appState.selectedSectionRawValue) { _, newValue in
+            syncSectionFromAppState(newValue)
+        }
+        .onChange(of: section) { _, newValue in
+            if appState.selectedSectionRawValue != newValue.rawValue {
+                appState.selectedSectionRawValue = newValue.rawValue
+            }
         }
     }
 
@@ -205,6 +218,13 @@ struct FaroRootView: View {
                 icon: "text.bubble"
             ) { section = .analyze }
         }
+    }
+}
+
+private extension FaroRootView {
+    func syncSectionFromAppState(_ rawValue: String) {
+        guard let target = FaroSection(rawValue: rawValue), target != section else { return }
+        section = target
     }
 }
 

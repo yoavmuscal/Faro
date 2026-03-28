@@ -11,6 +11,7 @@ struct AgentTrackerView: View {
     @State private var results: ResultsResponse?
     @State private var isLoadingResults = false
     @State private var errorMessage: String?
+    @State private var appeared = false
 
     private let allSteps: [AgentStep] = [.riskProfiler, .coverageMapper, .submissionBuilder, .explainer]
 
@@ -35,7 +36,7 @@ struct AgentTrackerView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-                Text("Analyzing your business")
+                Text("Analyzing \(businessName)")
                     .font(FaroType.title2())
                     .foregroundStyle(FaroPalette.ink)
                 Text("The agent is reasoning through your coverage needs in real time.")
@@ -45,18 +46,20 @@ struct AgentTrackerView: View {
                 ProgressView(value: Double(completedCount), total: Double(allSteps.count))
                     .tint(hasError ? FaroPalette.danger : FaroPalette.purpleDeep)
                     .padding(.top, FaroSpacing.xs)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: completedCount)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(FaroSpacing.md)
+            .faroStaggerIn(appeared: appeared, delay: 0)
 
             ScrollView {
                 LazyVStack(spacing: FaroSpacing.sm + 2) {
-                    ForEach(allSteps, id: \.self) { step in
+                    ForEach(Array(allSteps.enumerated()), id: \.element) { index, step in
                         StepCard(
                             step: step,
                             update: ws.stepUpdates.first(where: { $0.step == step })
                         )
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .faroStaggerIn(appeared: appeared, delay: 0.08 + Double(index) * 0.06)
                     }
                 }
                 .padding(FaroSpacing.md)
@@ -73,6 +76,7 @@ struct AgentTrackerView: View {
                 }
                 .padding(.horizontal, FaroSpacing.md)
                 .padding(.bottom, FaroSpacing.xs)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             if isComplete {
@@ -82,18 +86,20 @@ struct AgentTrackerView: View {
                     Group {
                         if isLoadingResults {
                             ProgressView()
-                                .tint(FaroPalette.onAccent)
+                                .tint(.white)
                         } else {
-                            Text("View coverage options")
-                                .font(FaroType.headline())
+                            HStack(spacing: 8) {
+                                Text("View coverage options")
+                                    .font(FaroType.headline())
+                                Image(systemName: "arrow.right")
+                                    .font(.subheadline.weight(.semibold))
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
-                    .background(FaroPalette.purpleDeep)
-                    .foregroundStyle(FaroPalette.onAccent)
-                    .clipShape(RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
                 }
+                .buttonStyle(.faroGradient)
                 .disabled(isLoadingResults)
                 .padding(FaroSpacing.md)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -111,10 +117,15 @@ struct AgentTrackerView: View {
             }
         }
         .onAppear {
+<<<<<<< HEAD
             Task {
                 let token = await authManager.accessToken()
                 ws.connect(accessToken: token)
             }
+=======
+            ws.connect()
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { appeared = true }
+>>>>>>> e52b147b11078088ed646e8a2ee256e102628758
         }
         .onDisappear { ws.disconnect() }
     }
@@ -173,9 +184,21 @@ struct StepCard: View {
         HStack(alignment: .top, spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(statusColor.opacity(0.15))
-                    .frame(width: 44, height: 44)
+                    .fill(statusColor.opacity(0.12))
+                    .frame(width: 46, height: 46)
+
                 if update?.status == .running {
+                    Circle()
+                        .fill(FaroPalette.info.opacity(0.08))
+                        .frame(width: 46, height: 46)
+                        .phaseAnimator([false, true]) { content, phase in
+                            content.overlay {
+                                Circle()
+                                    .stroke(FaroPalette.info.opacity(phase ? 0 : 0.35), lineWidth: 2)
+                                    .scaleEffect(phase ? 1.6 : 1)
+                            }
+                        } animation: { _ in .easeOut(duration: 1.4) }
+
                     ProgressView()
                         .scaleEffect(0.7)
                         .tint(FaroPalette.info)
@@ -183,9 +206,14 @@ struct StepCard: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(FaroPalette.danger)
+                } else if update?.status == .complete {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(FaroPalette.success)
+                        .transition(.scale.combined(with: .opacity))
                 } else {
-                    Image(systemName: update?.status == .complete ? "checkmark" : stepIcon)
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    Image(systemName: stepIcon)
+                        .font(.system(size: 16, weight: .medium, design: .rounded))
                         .foregroundStyle(statusColor)
                 }
             }
@@ -200,19 +228,15 @@ struct StepCard: View {
                         .font(FaroType.caption())
                         .foregroundStyle(FaroPalette.ink.opacity(0.55))
                         .fixedSize(horizontal: false, vertical: true)
+                        .transition(.opacity)
                 } else if update == nil {
                     Text(stepSubtitle)
                         .font(FaroType.caption())
                         .foregroundStyle(FaroPalette.ink.opacity(0.35))
                 } else if update?.status == .running {
-                    HStack(spacing: 4) {
-                        Text("Processing")
-                            .font(FaroType.caption())
-                            .foregroundStyle(FaroPalette.info)
-                        Text("···")
-                            .font(FaroType.caption())
-                            .foregroundStyle(FaroPalette.info)
-                    }
+                    Text("Processing...")
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.info)
                 }
             }
 
@@ -222,10 +246,12 @@ struct StepCard: View {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(FaroPalette.success)
                     .font(.body)
+                    .transition(.scale.combined(with: .opacity))
             }
         }
         .padding(FaroSpacing.md)
-        .faroGlassCard(cornerRadius: FaroRadius.md, material: .ultraThinMaterial)
+        .faroGlassCard(cornerRadius: FaroRadius.lg, material: .ultraThinMaterial)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: update?.status)
     }
 
     var statusColor: Color {

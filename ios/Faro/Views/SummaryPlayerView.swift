@@ -7,12 +7,13 @@ struct SummaryPlayerView: View {
     let businessName: String
 
     @StateObject private var player = SummaryAudioPlayer()
+    @State private var appeared = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: FaroSpacing.lg) {
                 VStack(alignment: .leading, spacing: FaroSpacing.xs) {
-                    Text("Coverage Summary")
+                    Text(businessName.isEmpty ? "Coverage Summary" : "\(businessName) Summary")
                         .font(FaroType.title())
                         .foregroundStyle(FaroPalette.ink)
                     Text("Plain-English explanation of your coverage recommendations")
@@ -21,14 +22,17 @@ struct SummaryPlayerView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, FaroSpacing.md)
+                .faroStaggerIn(appeared: appeared, delay: 0)
 
                 if !voiceURL.isEmpty {
                     audioPlayerCard
                         .padding(.horizontal, FaroSpacing.md)
+                        .faroStaggerIn(appeared: appeared, delay: 0.06)
                 }
 
                 summaryTextCard
                     .padding(.horizontal, FaroSpacing.md)
+                    .faroStaggerIn(appeared: appeared, delay: 0.12)
 
                 Spacer(minLength: 40)
             }
@@ -39,6 +43,9 @@ struct SummaryPlayerView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .onAppear {
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { appeared = true }
+        }
     }
 
     private var audioPlayerCard: some View {
@@ -59,11 +66,19 @@ struct SummaryPlayerView: View {
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(FaroPalette.purpleDeep)
+                            .fill(
+                                LinearGradient(
+                                    colors: [FaroPalette.purpleDeep, FaroPalette.purple],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
                             .frame(width: 56, height: 56)
+                            .shadow(color: FaroPalette.purpleDeep.opacity(0.3), radius: 10, y: 3)
+
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                             .font(.title3)
-                            .foregroundStyle(FaroPalette.onAccent)
+                            .foregroundStyle(.white)
                     }
                 }
                 .buttonStyle(.plain)
@@ -97,7 +112,7 @@ struct SummaryPlayerView: View {
                 .font(FaroType.body())
                 .foregroundStyle(FaroPalette.ink.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(4)
+                .lineSpacing(5)
         }
         .padding(FaroSpacing.md)
         .faroGlassCard(cornerRadius: FaroRadius.xl)
@@ -108,7 +123,6 @@ struct SummaryPlayerView: View {
 final class SummaryAudioPlayer: ObservableObject {
     @Published var isPlaying = false
     private var avPlayer: AVPlayer?
-    /// Held for teardown from `deinit` (nonisolated); avoids Swift 6 isolation warnings on `Any?`.
     nonisolated(unsafe) private var endObserver: NSObjectProtocol?
 
     func play(url: String) {
