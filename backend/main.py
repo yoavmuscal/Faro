@@ -14,9 +14,11 @@ from models import (
     ResultsResponse, CoverageOption, CoverageCategory,
     StatusResponse, CoverageStatus,
     StepUpdate,
+    ConvStartResponse, ConvCompleteRequest, ConvCompleteResponse,
 )
 import database as db
 from agent.pipeline import run_pipeline
+import agent.elevenlabs_conversation as elevenlabs_conv
 
 # Load backend-local environment variables for local development.
 load_dotenv(Path(__file__).with_name(".env"))
@@ -91,6 +93,52 @@ async def _run_pipeline_task(session_id: str, intake: dict):
         )
     except Exception as e:
         await db.save_session(session_id, {"pipeline_status": "error", "error": str(e)})
+
+
+# ── POST /conv/start ──────────────────────────────────────────────────────────
+
+@app.post("/conv/start", response_model=ConvStartResponse)
+async def conv_start():
+    session_id = str(uuid.uuid4())
+    # Generate the signed WebRTC URL for this session
+    signed_url = await elevenlabs_conv.create_conversation_token(session_id)
+    return ConvStartResponse(session_id=session_id, signed_url=signed_url)
+
+
+# ── POST /conv/complete ───────────────────────────────────────────────────────
+
+@app.post("/conv/complete", response_model=ConvCompleteResponse)
+async def conv_complete(body: ConvCompleteRequest):
+    session_id = body.session_id
+    
+    # 1. Ask Gemini to extract the 5 standard fields from the transcript
+    raw_intake_dict = await elevenlabs_conv.extract_intake_from_transcript(body.transcript)
+    
+    # 2. Convert to the standard IntakeRequest
+    try:
+        intake_req = IntakeRequest(**raw_intake_dict)
+    except Exception as e:
+        logger.error(f"Failed to parse gemini output into IntakeRequest: {e}")
+        # fallback defaults so we don't crash
+        intake_req = IntakeRequest(
+            business_name=raw_intake_dict.get("business_name", "Unknown Business"),
+            description=raw_intake_dict.get("description", "Not specified"),
+            employee_count=1,
+            state="NY",
+            annual_revenue=0.0
+        )
+
+    # 3. Save to DB just like standard /intake
+    await db.save_session(session_id, {
+        "session_id": session_id,
+        "intake": intake_req.model_dump(),
+        "pipeline_status": "pending",
+    })
+    
+    # 4. Fire the pipeline background task
+    asyncio.create_task(_run_pipeline_task(session_id, intake_req.model_dump()))
+    
+    return ConvCompleteResponse(session_id=session_id)
 
 
 # ── WebSocket /ws/{session_id} ────────────────────────────────────────────────

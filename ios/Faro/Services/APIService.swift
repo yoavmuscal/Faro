@@ -30,6 +30,30 @@ actor APIService {
         return try decoder.decode(IntakeResponse.self, from: data)
     }
 
+    // MARK: - Conversational AI
+
+    func startConversation() async throws -> ConvStartResponse {
+        var request = URLRequest(url: URL(string: "\(baseURL)/conv/start")!)
+        request.httpMethod = "POST"
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response)
+        return try decoder.decode(ConvStartResponse.self, from: data)
+    }
+
+    func completeConversation(sessionId: String, transcript: [ConvTranscriptTurn]) async throws -> ConvCompleteResponse {
+        var request = URLRequest(url: URL(string: "\(baseURL)/conv/complete")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let payload = ConvCompleteRequest(sessionId: sessionId, transcript: transcript)
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response)
+        return try decoder.decode(ConvCompleteResponse.self, from: data)
+    }
+
     // MARK: - GET /results/{session_id}
 
     /// Polls while the server returns **202** (pipeline finished in the UI but DB not finalized yet).

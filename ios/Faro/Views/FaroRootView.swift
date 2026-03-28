@@ -53,7 +53,7 @@ struct FaroRootView: View {
         #else
         TabView(selection: $section) {
             NavigationStack {
-                OnboardingView()
+                IntakeChoiceView()
             }
             .tabItem { Label(FaroSection.analyze.title, systemImage: FaroSection.analyze.systemImage) }
             .tag(FaroSection.analyze)
@@ -129,7 +129,7 @@ struct FaroRootView: View {
     private var detailStack: some View {
         switch section {
         case .analyze:
-            NavigationStack { OnboardingView() }
+            NavigationStack { IntakeChoiceView() }
         case .coverage:
             NavigationStack { coverageRoot }
         case .riskProfile:

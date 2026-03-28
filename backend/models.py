@@ -92,3 +92,26 @@ class PipelineState(BaseModel):
     voice_url: Optional[str] = None
     submission_packet_url: Optional[str] = None
     error: Optional[str] = None
+
+
+# ── Conversational AI intake ──────────────────────────────────────────────────
+
+class ConvStartResponse(BaseModel):
+    """Returned by POST /conv/start — hands the signed ElevenLabs WS URL to iOS."""
+    session_id: str
+    signed_url: str   # wss://… — iOS connects directly; no audio proxied by us
+
+
+class ConvTranscriptTurn(BaseModel):
+    role: str          # "agent" | "user"
+    message: str
+
+
+class ConvCompleteRequest(BaseModel):
+    """iOS sends the finished transcript + the session_id it got from /conv/start."""
+    session_id: str
+    transcript: list[ConvTranscriptTurn]
+
+
+class ConvCompleteResponse(BaseModel):
+    session_id: str

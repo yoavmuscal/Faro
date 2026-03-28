@@ -26,6 +26,41 @@ struct IntakeResponse: Codable {
     }
 }
 
+// MARK: - Conversational AI Intake
+
+struct ConvStartResponse: Codable {
+    let sessionId: String
+    let signedUrl: String
+    
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case signedUrl = "signed_url"
+    }
+}
+
+struct ConvTranscriptTurn: Codable {
+    let role: String
+    let message: String
+}
+
+struct ConvCompleteRequest: Codable {
+    let sessionId: String
+    let transcript: [ConvTranscriptTurn]
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case transcript
+    }
+}
+
+struct ConvCompleteResponse: Codable {
+    let sessionId: String
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+    }
+}
+
 // MARK: - WebSocket Step Updates
 
 enum AgentStep: String, Codable {

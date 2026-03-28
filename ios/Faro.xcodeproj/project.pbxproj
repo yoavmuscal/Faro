@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0AB42CDDB962681D9ED36959 /* ElevenLabsConvService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5856D523D28CCEAA01A4A5 /* ElevenLabsConvService.swift */; };
+		118A2A870EA2E089E7C31A73 /* VoiceIntakeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F338361E0FEDBF598F429A5 /* VoiceIntakeView.swift */; };
+		9E704778F101D3B30AD1FBF8 /* IntakeChoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67E0A0E48F9A0581272CB66D /* IntakeChoiceView.swift */; };
 		B000000000000000000000001 /* FaroApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000001 /* FaroApp.swift */; };
 		B000000000000000000000002 /* APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000002 /* APIModels.swift */; };
 		B000000000000000000000003 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000003 /* APIService.swift */; };
@@ -30,6 +33,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		3F338361E0FEDBF598F429A5 /* VoiceIntakeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VoiceIntakeView.swift; sourceTree = "<group>"; };
+		67E0A0E48F9A0581272CB66D /* IntakeChoiceView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IntakeChoiceView.swift; sourceTree = "<group>"; };
+		8B5856D523D28CCEAA01A4A5 /* ElevenLabsConvService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ElevenLabsConvService.swift; sourceTree = "<group>"; };
 		A000000000000000000000001 /* FaroApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroApp.swift; sourceTree = "<group>"; };
 		A000000000000000000000002 /* APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIModels.swift; sourceTree = "<group>"; };
 		A000000000000000000000003 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
@@ -106,6 +112,7 @@
 				A000000000000000000000003 /* APIService.swift */,
 				A000000000000000000000004 /* WebSocketService.swift */,
 				A000000000000000000000005 /* APIConfig.swift */,
+				8B5856D523D28CCEAA01A4A5 /* ElevenLabsConvService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -121,17 +128,10 @@
 				A000000000000000000000014 /* RiskProfileView.swift */,
 				A000000000000000000000015 /* SubmissionPacketView.swift */,
 				A000000000000000000000016 /* SummaryPlayerView.swift */,
+				67E0A0E48F9A0581272CB66D /* IntakeChoiceView.swift */,
+				3F338361E0FEDBF598F429A5 /* VoiceIntakeView.swift */,
 			);
 			path = Views;
-			sourceTree = "<group>";
-		};
-		C000000000000000000000009 /* DesignSystem */ = {
-			isa = PBXGroup;
-			children = (
-				A00000000000000000000000F /* FaroTheme.swift */,
-				A000000000000000000000010 /* FaroGlass.swift */,
-			);
-			path = DesignSystem;
 			sourceTree = "<group>";
 		};
 		C000000000000000000000006 /* Products */ = {
@@ -157,6 +157,15 @@
 				A00000000000000000000000D /* PlatformColor.swift */,
 			);
 			path = Platform;
+			sourceTree = "<group>";
+		};
+		C000000000000000000000009 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000000F /* FaroTheme.swift */,
+				A000000000000000000000010 /* FaroGlass.swift */,
+			);
+			path = DesignSystem;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -247,6 +256,9 @@
 				B000000000000000000000012 /* RiskProfileView.swift in Sources */,
 				B000000000000000000000013 /* SubmissionPacketView.swift in Sources */,
 				B000000000000000000000014 /* SummaryPlayerView.swift in Sources */,
+				0AB42CDDB962681D9ED36959 /* ElevenLabsConvService.swift in Sources */,
+				9E704778F101D3B30AD1FBF8 /* IntakeChoiceView.swift in Sources */,
+				118A2A870EA2E089E7C31A73 /* VoiceIntakeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

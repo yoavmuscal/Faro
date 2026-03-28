@@ -9,3 +9,4 @@ google-genai
 python-dotenv>=1.0.0
 pydantic>=2.7.0
 mangum>=0.17.0        # AWS Lambda adapter for FastAPI
+elevenlabs>=1.0.0
