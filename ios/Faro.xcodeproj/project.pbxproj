@@ -24,6 +24,9 @@
 		B00000000000000000000000F /* FaroAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000011 /* FaroAppState.swift */; };
 		B000000000000000000000010 /* FaroRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000012 /* FaroRootView.swift */; };
 		B000000000000000000000011 /* FaroSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000013 /* FaroSettingsView.swift */; };
+		B000000000000000000000012 /* RiskProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000014 /* RiskProfileView.swift */; };
+		B000000000000000000000013 /* SubmissionPacketView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000015 /* SubmissionPacketView.swift */; };
+		B000000000000000000000014 /* SummaryPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000016 /* SummaryPlayerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +49,9 @@
 		A000000000000000000000011 /* FaroAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroAppState.swift; sourceTree = "<group>"; };
 		A000000000000000000000012 /* FaroRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroRootView.swift; sourceTree = "<group>"; };
 		A000000000000000000000013 /* FaroSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroSettingsView.swift; sourceTree = "<group>"; };
+		A000000000000000000000014 /* RiskProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RiskProfileView.swift; sourceTree = "<group>"; };
+		A000000000000000000000015 /* SubmissionPacketView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubmissionPacketView.swift; sourceTree = "<group>"; };
+		A000000000000000000000016 /* SummaryPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryPlayerView.swift; sourceTree = "<group>"; };
 		D000000000000000000000001 /* Faro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Faro.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -112,6 +118,9 @@
 				A000000000000000000000007 /* AgentTrackerView.swift */,
 				A000000000000000000000008 /* CoverageDashboardView.swift */,
 				A000000000000000000000013 /* FaroSettingsView.swift */,
+				A000000000000000000000014 /* RiskProfileView.swift */,
+				A000000000000000000000015 /* SubmissionPacketView.swift */,
+				A000000000000000000000016 /* SummaryPlayerView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -235,6 +244,9 @@
 				B00000000000000000000000F /* FaroAppState.swift in Sources */,
 				B000000000000000000000010 /* FaroRootView.swift in Sources */,
 				B000000000000000000000011 /* FaroSettingsView.swift in Sources */,
+				B000000000000000000000012 /* RiskProfileView.swift in Sources */,
+				B000000000000000000000013 /* SubmissionPacketView.swift in Sources */,
+				B000000000000000000000014 /* SummaryPlayerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

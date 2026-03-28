@@ -1,7 +1,5 @@
 import SwiftUI
 
-// MARK: - View
-
 struct AgentTrackerView: View {
     @EnvironmentObject private var appState: FaroAppState
     let sessionId: String
@@ -10,6 +8,8 @@ struct AgentTrackerView: View {
     @StateObject private var ws: WebSocketService
     @State private var navigateToDashboard = false
     @State private var results: ResultsResponse?
+    @State private var isLoadingResults = false
+    @State private var errorMessage: String?
 
     private let allSteps: [AgentStep] = [.riskProfiler, .coverageMapper, .submissionBuilder, .explainer]
 
@@ -23,6 +23,14 @@ struct AgentTrackerView: View {
         ws.stepUpdates.filter({ $0.status == .complete }).count == allSteps.count
     }
 
+    var hasError: Bool {
+        ws.stepUpdates.contains(where: { $0.status == .error })
+    }
+
+    private var completedCount: Int {
+        ws.stepUpdates.filter({ $0.status == .complete }).count
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: FaroSpacing.sm) {
@@ -32,6 +40,10 @@ struct AgentTrackerView: View {
                 Text("The agent is reasoning through your coverage needs in real time.")
                     .font(FaroType.subheadline())
                     .foregroundStyle(FaroPalette.ink.opacity(0.55))
+
+                ProgressView(value: Double(completedCount), total: Double(allSteps.count))
+                    .tint(hasError ? FaroPalette.danger : FaroPalette.purpleDeep)
+                    .padding(.top, FaroSpacing.xs)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(FaroSpacing.md)
@@ -50,18 +62,38 @@ struct AgentTrackerView: View {
                 .animation(.spring(response: 0.5, dampingFraction: 0.8), value: ws.stepUpdates.count)
             }
 
+            if let error = errorMessage {
+                HStack(spacing: FaroSpacing.xs) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(FaroPalette.danger)
+                    Text(error)
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.danger)
+                }
+                .padding(.horizontal, FaroSpacing.md)
+                .padding(.bottom, FaroSpacing.xs)
+            }
+
             if isComplete {
                 Button {
                     Task { await loadResults() }
                 } label: {
-                    Text("View coverage options")
-                        .font(FaroType.headline())
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(FaroPalette.purpleDeep)
-                        .foregroundStyle(FaroPalette.onAccent)
-                        .clipShape(RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
+                    Group {
+                        if isLoadingResults {
+                            ProgressView()
+                                .tint(FaroPalette.onAccent)
+                        } else {
+                            Text("View coverage options")
+                                .font(FaroType.headline())
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(FaroPalette.purpleDeep)
+                    .foregroundStyle(FaroPalette.onAccent)
+                    .clipShape(RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
                 }
+                .disabled(isLoadingResults)
                 .padding(FaroSpacing.md)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -82,14 +114,17 @@ struct AgentTrackerView: View {
     }
 
     private func loadResults() async {
+        isLoadingResults = true
+        errorMessage = nil
         do {
             let fetched = try await APIService.shared.fetchResults(sessionId: sessionId)
             results = fetched
             appState.completeAnalysis(results: fetched)
             navigateToDashboard = true
         } catch {
-            // TODO: show error
+            errorMessage = "Failed to load results. Tap to retry."
         }
+        isLoadingResults = false
     }
 }
 
@@ -108,12 +143,21 @@ struct StepCard: View {
         }
     }
 
+    var stepSubtitle: String {
+        switch step {
+        case .riskProfiler: return "Analyzing industry risks and regulatory exposure"
+        case .coverageMapper: return "Mapping risks to specific policy types"
+        case .submissionBuilder: return "Generating carrier-ready submission packet"
+        case .explainer: return "Writing plain-English summary"
+        }
+    }
+
     var stepIcon: String {
         switch step {
         case .riskProfiler: return "magnifyingglass"
         case .coverageMapper: return "map"
         case .submissionBuilder: return "doc.text"
-        case .explainer: return "bubble.left"
+        case .explainer: return "text.bubble"
         }
     }
 
@@ -122,14 +166,18 @@ struct StepCard: View {
             ZStack {
                 Circle()
                     .fill(statusColor.opacity(0.15))
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                 if update?.status == .running {
                     ProgressView()
                         .scaleEffect(0.7)
                         .tint(FaroPalette.info)
+                } else if update?.status == .error {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(FaroPalette.danger)
                 } else {
                     Image(systemName: update?.status == .complete ? "checkmark" : stepIcon)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(statusColor)
                 }
             }
@@ -144,10 +192,29 @@ struct StepCard: View {
                         .font(FaroType.caption())
                         .foregroundStyle(FaroPalette.ink.opacity(0.55))
                         .fixedSize(horizontal: false, vertical: true)
+                } else if update == nil {
+                    Text(stepSubtitle)
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.35))
+                } else if update?.status == .running {
+                    HStack(spacing: 4) {
+                        Text("Processing")
+                            .font(FaroType.caption())
+                            .foregroundStyle(FaroPalette.info)
+                        Text("···")
+                            .font(FaroType.caption())
+                            .foregroundStyle(FaroPalette.info)
+                    }
                 }
             }
 
             Spacer()
+
+            if update?.status == .complete {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(FaroPalette.success)
+                    .font(.body)
+            }
         }
         .padding(FaroSpacing.md)
         .faroGlassCard(cornerRadius: FaroRadius.md, material: .ultraThinMaterial)

@@ -125,6 +125,9 @@ async def get_results(session_id: str):
         coverage_options=coverage_options,
         submission_packet_url=session.get("submission_packet_url", ""),
         voice_summary_url=session.get("voice_url", ""),
+        risk_profile=session.get("risk_profile"),
+        submission_packet=session.get("submission_packet"),
+        plain_english_summary=session.get("plain_english_summary"),
     )
 
 

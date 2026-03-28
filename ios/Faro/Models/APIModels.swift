@@ -64,8 +64,9 @@ struct CoverageOption: Codable, Identifiable {
 
     var id: String { type }
 
-    /// Convenience so call-sites don't need to inspect `category` directly.
     var isRequired: Bool { category == .required }
+
+    var premiumMidpoint: Double { (estimatedPremiumLow + estimatedPremiumHigh) / 2 }
 
     enum CodingKeys: String, CodingKey {
         case type, description, category, confidence
@@ -79,11 +80,169 @@ struct ResultsResponse: Codable {
     let coverageOptions: [CoverageOption]
     let submissionPacketUrl: String
     let voiceSummaryUrl: String
+    let riskProfile: RiskProfile?
+    let submissionPacket: SubmissionPacket?
+    let plainEnglishSummary: String?
 
     enum CodingKeys: String, CodingKey {
         case coverageOptions = "coverage_options"
         case submissionPacketUrl = "submission_packet_url"
         case voiceSummaryUrl = "voice_summary_url"
+        case riskProfile = "risk_profile"
+        case submissionPacket = "submission_packet"
+        case plainEnglishSummary = "plain_english_summary"
+    }
+}
+
+// MARK: - Risk Profile
+
+struct RiskProfile: Codable {
+    let industry: String?
+    let sicCode: String?
+    let riskLevel: String?
+    let primaryExposures: [String]?
+    let stateRequirements: [String]?
+    let employeeImplications: [String]?
+    let revenueExposure: String?
+    let unusualRisks: [String]?
+    let reasoningSummary: String?
+
+    enum CodingKeys: String, CodingKey {
+        case industry
+        case sicCode = "sic_code"
+        case riskLevel = "risk_level"
+        case primaryExposures = "primary_exposures"
+        case stateRequirements = "state_requirements"
+        case employeeImplications = "employee_implications"
+        case revenueExposure = "revenue_exposure"
+        case unusualRisks = "unusual_risks"
+        case reasoningSummary = "reasoning_summary"
+    }
+}
+
+// MARK: - Submission Packet
+
+struct SubmissionPacket: Codable {
+    let submissionDate: String?
+    let applicant: SubmissionApplicant?
+    let operations: SubmissionOperations?
+    let lossHistory: [SubmissionLoss]?
+    let requestedCoverages: [SubmissionRequestedCoverage]?
+    let underwriterNotes: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case submissionDate = "submission_date"
+        case applicant, operations
+        case lossHistory = "loss_history"
+        case requestedCoverages = "requested_coverages"
+        case underwriterNotes = "underwriter_notes"
+    }
+}
+
+struct SubmissionApplicant: Codable {
+    let legalName: String?
+    let dba: String?
+    let businessType: String?
+    let yearsInBusiness: Int?
+    let stateOfIncorporation: String?
+    let primaryStateOfOperations: String?
+    let mailingAddress: String?
+    let phone: String?
+    let website: String?
+    let federalEin: String?
+
+    enum CodingKeys: String, CodingKey {
+        case legalName = "legal_name"
+        case dba
+        case businessType = "business_type"
+        case yearsInBusiness = "years_in_business"
+        case stateOfIncorporation = "state_of_incorporation"
+        case primaryStateOfOperations = "primary_state_of_operations"
+        case mailingAddress = "mailing_address"
+        case phone, website
+        case federalEin = "federal_ein"
+    }
+}
+
+struct SubmissionOperations: Codable {
+    let description: String?
+    let sicCode: String?
+    let naicsCode: String?
+    let employees: SubmissionEmployeeInfo?
+    let revenue: SubmissionRevenueInfo?
+    let payroll: SubmissionPayrollInfo?
+    let subcontractors: SubmissionSubcontractorInfo?
+
+    enum CodingKeys: String, CodingKey {
+        case description
+        case sicCode = "sic_code"
+        case naicsCode = "naics_code"
+        case employees, revenue, payroll, subcontractors
+    }
+}
+
+struct SubmissionEmployeeInfo: Codable {
+    let fullTime: Int?
+    let partTime: Int?
+    let total: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case fullTime = "full_time"
+        case partTime = "part_time"
+        case total
+    }
+}
+
+struct SubmissionRevenueInfo: Codable {
+    let annual: Double?
+    let projectedGrowth: String?
+
+    enum CodingKeys: String, CodingKey {
+        case annual
+        case projectedGrowth = "projected_growth"
+    }
+}
+
+struct SubmissionPayrollInfo: Codable {
+    let annual: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case annual
+    }
+}
+
+struct SubmissionSubcontractorInfo: Codable {
+    let used: Bool?
+    let details: String?
+
+    enum CodingKeys: String, CodingKey {
+        case used, details
+    }
+}
+
+struct SubmissionLoss: Codable {
+    let year: Int?
+    let type: String?
+    let amount: Double?
+    let description: String?
+
+    enum CodingKeys: String, CodingKey {
+        case year, type, amount, description
+    }
+}
+
+struct SubmissionRequestedCoverage: Codable, Identifiable {
+    let type: String?
+    let limits: String?
+    let deductible: String?
+    let effectiveDate: String?
+    let notes: String?
+
+    var id: String { type ?? UUID().uuidString }
+
+    enum CodingKeys: String, CodingKey {
+        case type, limits, deductible, notes
+        case effectiveDate = "effective_date"
     }
 }
 

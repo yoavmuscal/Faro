@@ -56,6 +56,7 @@ struct CoverageDashboardView: View {
     @StateObject private var vm: CoverageDashboardViewModel
     @State private var selectedIndex = 0
     @State private var pdfURL: URL?
+    @State private var showCoverageDetail: CoverageOption?
 
     init(results: ResultsResponse, sessionId: String, businessName: String = "Business") {
         self.results = results
@@ -81,65 +82,44 @@ struct CoverageDashboardView: View {
         }
     }
 
+    private var totalPremiumLow: Double {
+        results.coverageOptions.reduce(0) { $0 + $1.estimatedPremiumLow }
+    }
+
+    private var totalPremiumHigh: Double {
+        results.coverageOptions.reduce(0) { $0 + $1.estimatedPremiumHigh }
+    }
+
+    private var avgConfidencePercent: Int {
+        let opts = results.coverageOptions
+        guard !opts.isEmpty else { return 0 }
+        let sum = opts.map(\.confidence).reduce(0, +)
+        return Int(sum / Double(opts.count) * 100)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: FaroSpacing.lg) {
-                VStack(alignment: .leading, spacing: FaroSpacing.xs) {
-                    Text("Your coverage")
-                        .font(FaroType.title())
-                        .foregroundStyle(FaroPalette.ink)
-                    Text("\(sortedCoverage.filter { $0.category == .required }.count) required · \(sortedCoverage.filter { $0.category == .recommended }.count) recommended · \(sortedCoverage.filter { $0.category == .projected }.count) projected")
-                        .font(FaroType.subheadline())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.55))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, FaroSpacing.md)
+                headerSection
+                overviewRow
+                premiumBarChart
+                    .padding(.horizontal, FaroSpacing.md)
 
                 if !categoryChartData.isEmpty {
                     coverageMixChart
                         .padding(.horizontal, FaroSpacing.md)
                 }
 
-                coverageCarousel(sortedCoverage: sortedCoverage)
+                Text("Coverage Options")
+                    .font(FaroType.headline())
+                    .foregroundStyle(FaroPalette.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, FaroSpacing.md)
 
-                VStack(spacing: FaroSpacing.sm + 2) {
-                    Button {
-                        if vm.isPlayingAudio { vm.stopAudio() } else { vm.playVoiceSummary() }
-                    } label: {
-                        Label(
-                            vm.isPlayingAudio ? "Stop" : "Hear your summary",
-                            systemImage: vm.isPlayingAudio ? "stop.fill" : "speaker.wave.2.fill"
-                        )
-                        .font(FaroType.headline())
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(FaroPalette.purpleDeep)
-                        .foregroundStyle(FaroPalette.onAccent)
-                        .clipShape(RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
-                    }
-                    .disabled(results.voiceSummaryUrl.isEmpty)
+                coverageList(sortedCoverage: sortedCoverage)
 
-                    Button {
-                        Task { await exportPDF() }
-                    } label: {
-                        Label("Prepare submission packet", systemImage: "arrow.up.doc.fill")
-                            .font(FaroType.headline())
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                    }
-                    .buttonStyle(.faroGlassProminent)
-
-                    if let url = pdfURL {
-                        ShareLink(item: url, preview: SharePreview("Faro submission", image: Image(systemName: "doc.fill"))) {
-                            Label("Share PDF", systemImage: "square.and.arrow.up")
-                                .font(FaroType.headline())
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 56)
-                        }
-                        .buttonStyle(.faroGlassProminent)
-                    }
-                }
-                .padding(.horizontal, FaroSpacing.md)
+                actionButtons
+                    .padding(.horizontal, FaroSpacing.md)
 
                 Spacer(minLength: 40)
             }
@@ -151,6 +131,82 @@ struct CoverageDashboardView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .onAppear { WidgetDataWriter.update(from: results, businessName: businessName) }
+        .sheet(item: $showCoverageDetail) { option in
+            NavigationStack {
+                CoverageDetailSheet(option: option)
+            }
+        }
+    }
+
+    // MARK: - Sections
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.xs) {
+            Text("Your coverage")
+                .font(FaroType.title())
+                .foregroundStyle(FaroPalette.ink)
+            Text("\(sortedCoverage.filter { $0.category == .required }.count) required · \(sortedCoverage.filter { $0.category == .recommended }.count) recommended · \(sortedCoverage.filter { $0.category == .projected }.count) projected")
+                .font(FaroType.subheadline())
+                .foregroundStyle(FaroPalette.ink.opacity(0.55))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, FaroSpacing.md)
+    }
+
+    private var overviewRow: some View {
+        HStack(spacing: FaroSpacing.sm + 2) {
+            StatCard(
+                title: "Policies",
+                value: "\(results.coverageOptions.count)",
+                icon: "shield.checkered",
+                tint: FaroPalette.purpleDeep
+            )
+            StatCard(
+                title: "Est. Total",
+                value: "$\(Int(totalPremiumLow).formatted())–$\(Int(totalPremiumHigh).formatted())",
+                icon: "dollarsign.circle.fill",
+                tint: FaroPalette.success
+            )
+            StatCard(
+                title: "Avg Confidence",
+                value: "\(avgConfidencePercent)%",
+                icon: "chart.bar.fill",
+                tint: FaroPalette.info
+            )
+        }
+        .padding(.horizontal, FaroSpacing.md)
+    }
+
+    private var premiumBarChart: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+            Text("Premium Estimates")
+                .font(FaroType.headline())
+                .foregroundStyle(FaroPalette.ink)
+
+            Chart(sortedCoverage) { option in
+                BarMark(
+                    x: .value("Premium", option.premiumMidpoint),
+                    y: .value("Type", option.type)
+                )
+                .foregroundStyle(categoryTint(option.category).gradient)
+                .cornerRadius(6)
+                .annotation(position: .trailing) {
+                    Text("$\(Int(option.premiumMidpoint).formatted())")
+                        .font(FaroType.caption2())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.6))
+                }
+            }
+            .chartXAxis(.hidden)
+            .chartYAxis {
+                AxisMarks { _ in
+                    AxisValueLabel()
+                        .font(FaroType.caption2())
+                }
+            }
+            .frame(height: CGFloat(sortedCoverage.count) * 44 + 20)
+        }
+        .padding(FaroSpacing.md)
+        .faroGlassCard(cornerRadius: FaroRadius.xl, material: .regularMaterial)
     }
 
     private var coverageMixChart: some View {
@@ -159,25 +215,32 @@ struct CoverageDashboardView: View {
                 .font(FaroType.headline())
                 .foregroundStyle(FaroPalette.ink)
 
-            Chart(categoryChartData) { slice in
-                SectorMark(
-                    angle: .value("Policies", slice.count),
-                    innerRadius: .ratio(0.52),
-                    angularInset: 1.5
-                )
-                .foregroundStyle(categoryTint(slice.category))
-            }
-            .frame(height: 200)
+            HStack(spacing: FaroSpacing.lg) {
+                Chart(categoryChartData) { slice in
+                    SectorMark(
+                        angle: .value("Policies", slice.count),
+                        innerRadius: .ratio(0.52),
+                        angularInset: 1.5
+                    )
+                    .foregroundStyle(categoryTint(slice.category))
+                }
+                .frame(width: 140, height: 140)
 
-            HStack(spacing: FaroSpacing.md) {
-                ForEach(categoryChartData) { slice in
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(categoryTint(slice.category))
-                            .frame(width: 8, height: 8)
-                        Text(slice.category.label)
-                            .font(FaroType.caption2())
-                            .foregroundStyle(FaroPalette.ink.opacity(0.7))
+                VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                    ForEach(categoryChartData) { slice in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(categoryTint(slice.category))
+                                .frame(width: 10, height: 10)
+                            VStack(alignment: .leading) {
+                                Text(slice.category.label)
+                                    .font(FaroType.caption(.semibold))
+                                    .foregroundStyle(FaroPalette.ink)
+                                Text("\(slice.count) \(slice.count == 1 ? "policy" : "policies")")
+                                    .font(FaroType.caption2())
+                                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                            }
+                        }
                     }
                 }
             }
@@ -188,29 +251,58 @@ struct CoverageDashboardView: View {
     }
 
     @ViewBuilder
-    private func coverageCarousel(sortedCoverage: [CoverageOption]) -> some View {
-        #if os(iOS)
-        TabView(selection: $selectedIndex) {
-            ForEach(sortedCoverage.indices, id: \.self) { i in
-                CoverageCard(option: sortedCoverage[i])
-                    .tag(i)
-                    .padding(.horizontal)
-            }
-        }
-        .tabViewStyle(.page(indexDisplayMode: .always))
-        .frame(height: 340)
-        #else
-        ScrollView(.horizontal, showsIndicators: true) {
-            HStack(alignment: .top, spacing: FaroSpacing.md) {
-                ForEach(sortedCoverage) { option in
-                    CoverageCard(option: option)
-                        .frame(width: 380)
+    private func coverageList(sortedCoverage: [CoverageOption]) -> some View {
+        VStack(spacing: FaroSpacing.sm + 2) {
+            ForEach(sortedCoverage) { option in
+                Button {
+                    showCoverageDetail = option
+                } label: {
+                    CoverageListRow(option: option)
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, FaroSpacing.md)
         }
-        .frame(minHeight: 300)
-        #endif
+        .padding(.horizontal, FaroSpacing.md)
+    }
+
+    private var actionButtons: some View {
+        VStack(spacing: FaroSpacing.sm + 2) {
+            Button {
+                if vm.isPlayingAudio { vm.stopAudio() } else { vm.playVoiceSummary() }
+            } label: {
+                Label(
+                    vm.isPlayingAudio ? "Stop" : "Hear your summary",
+                    systemImage: vm.isPlayingAudio ? "stop.fill" : "speaker.wave.2.fill"
+                )
+                .font(FaroType.headline())
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(FaroPalette.purpleDeep)
+                .foregroundStyle(FaroPalette.onAccent)
+                .clipShape(RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous))
+            }
+            .disabled(results.voiceSummaryUrl.isEmpty)
+
+            Button {
+                Task { await exportPDF() }
+            } label: {
+                Label("Export submission PDF", systemImage: "arrow.up.doc.fill")
+                    .font(FaroType.headline())
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+            }
+            .buttonStyle(.faroGlassProminent)
+
+            if let url = pdfURL {
+                ShareLink(item: url, preview: SharePreview("Faro submission", image: Image(systemName: "doc.fill"))) {
+                    Label("Share PDF", systemImage: "square.and.arrow.up")
+                        .font(FaroType.headline())
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                }
+                .buttonStyle(.faroGlassProminent)
+            }
+        }
     }
 
     private func exportPDF() async {
@@ -226,6 +318,231 @@ struct CoverageDashboardView: View {
     }
 }
 
+// MARK: - Coverage List Row
+
+struct CoverageListRow: View {
+    let option: CoverageOption
+
+    private var categoryColor: Color {
+        switch option.category {
+        case .required: return FaroPalette.danger
+        case .recommended: return FaroPalette.warning
+        case .projected: return FaroPalette.purple
+        }
+    }
+
+    private var categoryLabel: String {
+        switch option.category {
+        case .required: return "Required"
+        case .recommended: return "Recommended"
+        case .projected: return "Projected"
+        }
+    }
+
+    private var confidenceColor: Color {
+        switch option.confidence {
+        case 0.8...: return FaroPalette.success
+        case 0.5..<0.8: return FaroPalette.warning
+        default: return FaroPalette.ink.opacity(0.4)
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: FaroSpacing.sm + 2) {
+            Circle()
+                .fill(categoryColor)
+                .frame(width: 10, height: 10)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(option.type)
+                    .font(FaroType.subheadline(.semibold))
+                    .foregroundStyle(FaroPalette.ink)
+                Text(option.description)
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                    .lineLimit(2)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("$\(Int(option.estimatedPremiumLow).formatted())–$\(Int(option.estimatedPremiumHigh).formatted())")
+                    .font(FaroType.caption(.semibold))
+                    .foregroundStyle(FaroPalette.ink)
+                HStack(spacing: 3) {
+                    Circle().fill(confidenceColor).frame(width: 6, height: 6)
+                    Text("\(Int(option.confidence * 100))%")
+                        .font(FaroType.caption2())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                }
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(FaroPalette.ink.opacity(0.3))
+        }
+        .padding(FaroSpacing.md)
+        .faroGlassCard(cornerRadius: FaroRadius.lg, material: .ultraThinMaterial)
+    }
+}
+
+// MARK: - Coverage Detail Sheet
+
+struct CoverageDetailSheet: View {
+    let option: CoverageOption
+    @Environment(\.dismiss) private var dismiss
+
+    private var categoryColor: Color {
+        switch option.category {
+        case .required: return FaroPalette.danger
+        case .recommended: return FaroPalette.warning
+        case .projected: return FaroPalette.purple
+        }
+    }
+
+    private var confidenceColor: Color {
+        switch option.confidence {
+        case 0.8...: return FaroPalette.success
+        case 0.5..<0.8: return FaroPalette.warning
+        default: return FaroPalette.ink.opacity(0.4)
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: FaroSpacing.lg) {
+                VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                    HStack {
+                        Text(option.category.rawValue.capitalized)
+                            .font(FaroType.caption(.bold))
+                            .foregroundStyle(categoryColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(categoryColor.opacity(0.14))
+                            .clipShape(Capsule())
+
+                        Spacer()
+
+                        HStack(spacing: 4) {
+                            Circle().fill(confidenceColor).frame(width: 8, height: 8)
+                            Text("\(Int(option.confidence * 100))% confidence")
+                                .font(FaroType.caption())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                        }
+                    }
+
+                    Text(option.type)
+                        .font(FaroType.title2())
+                        .foregroundStyle(FaroPalette.ink)
+                }
+
+                Text(option.description)
+                    .font(FaroType.body())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(3)
+
+                VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                    Text("Estimated Annual Premium")
+                        .font(FaroType.headline())
+                        .foregroundStyle(FaroPalette.ink)
+
+                    HStack(spacing: 0) {
+                        VStack(alignment: .leading) {
+                            Text("Low")
+                                .font(FaroType.caption2())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.4))
+                            Text("$\(Int(option.estimatedPremiumLow).formatted())")
+                                .font(FaroType.title3())
+                                .foregroundStyle(FaroPalette.success)
+                        }
+                        Spacer()
+                        VStack {
+                            Text("Mid")
+                                .font(FaroType.caption2())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.4))
+                            Text("$\(Int(option.premiumMidpoint).formatted())")
+                                .font(FaroType.title3())
+                                .foregroundStyle(FaroPalette.ink)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing) {
+                            Text("High")
+                                .font(FaroType.caption2())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.4))
+                            Text("$\(Int(option.estimatedPremiumHigh).formatted())")
+                                .font(FaroType.title3())
+                                .foregroundStyle(FaroPalette.danger)
+                        }
+                    }
+                    .padding(FaroSpacing.md)
+                    .faroGlassCard(cornerRadius: FaroRadius.lg)
+                }
+
+                if let trigger = option.triggerEvent {
+                    VStack(alignment: .leading, spacing: FaroSpacing.xs) {
+                        Text("Trigger Event")
+                            .font(FaroType.headline())
+                            .foregroundStyle(FaroPalette.ink)
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .foregroundStyle(FaroPalette.purpleDeep)
+                            Text(trigger)
+                                .font(FaroType.subheadline())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.75))
+                        }
+                        .padding(FaroSpacing.sm + 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(FaroPalette.purple.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous))
+                    }
+                }
+
+                Spacer(minLength: 40)
+            }
+            .padding(FaroSpacing.md)
+        }
+        .faroCanvasBackground()
+        .navigationTitle(option.type)
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { dismiss() }
+            }
+        }
+    }
+}
+
+// MARK: - Stat Card
+
+struct StatCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    let tint: Color
+
+    var body: some View {
+        VStack(spacing: FaroSpacing.xs) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(tint)
+            Text(value)
+                .font(FaroType.subheadline(.bold))
+                .foregroundStyle(FaroPalette.ink)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+            Text(title)
+                .font(FaroType.caption2())
+                .foregroundStyle(FaroPalette.ink.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, FaroSpacing.md)
+        .faroGlassCard(cornerRadius: FaroRadius.lg, material: .ultraThinMaterial)
+    }
+}
+
 // MARK: - Chart model
 
 private struct CategoryChartSlice: Identifiable {
@@ -234,7 +551,7 @@ private struct CategoryChartSlice: Identifiable {
     var id: CoverageCategory { category }
 }
 
-private extension CoverageCategory {
+extension CoverageCategory {
     var label: String {
         switch self {
         case .required: return "Required"
@@ -246,7 +563,7 @@ private extension CoverageCategory {
 
 // MARK: - Glass button style
 
-private struct FaroGlassProminentButtonStyle: ButtonStyle {
+struct FaroGlassProminentButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(FaroPalette.ink)
@@ -263,99 +580,19 @@ private struct FaroGlassProminentButtonStyle: ButtonStyle {
     }
 }
 
-private extension ButtonStyle where Self == FaroGlassProminentButtonStyle {
+extension ButtonStyle where Self == FaroGlassProminentButtonStyle {
     static var faroGlassProminent: FaroGlassProminentButtonStyle { FaroGlassProminentButtonStyle() }
 }
 
-// MARK: - Coverage Card
+// MARK: - CoverageOption Identifiable for sheet
 
-struct CoverageCard: View {
-    let option: CoverageOption
-
-    var categoryColor: Color {
-        switch option.category {
-        case .required: return FaroPalette.danger
-        case .recommended: return FaroPalette.warning
-        case .projected: return FaroPalette.purple
-        }
+extension CoverageOption: @retroactive Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(type)
     }
 
-    var categoryLabel: String {
-        switch option.category {
-        case .required: return "Required"
-        case .recommended: return "Recommended"
-        case .projected: return "Projected"
-        }
-    }
-
-    var confidenceColor: Color {
-        switch option.confidence {
-        case 0.8...: return FaroPalette.success
-        case 0.5..<0.8: return FaroPalette.warning
-        default: return FaroPalette.ink.opacity(0.4)
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.md) {
-            HStack {
-                Text(categoryLabel)
-                    .font(FaroType.caption(.bold))
-                    .foregroundStyle(categoryColor)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(categoryColor.opacity(0.14))
-                    .clipShape(Capsule())
-
-                Spacer()
-
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(confidenceColor)
-                        .frame(width: 8, height: 8)
-                    Text("\(Int(option.confidence * 100))% confidence")
-                        .font(FaroType.caption())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.55))
-                }
-            }
-
-            Text(option.type)
-                .font(FaroType.title3())
-                .foregroundStyle(FaroPalette.ink)
-
-            Text(option.description)
-                .font(FaroType.subheadline())
-                .foregroundStyle(FaroPalette.ink.opacity(0.6))
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let trigger = option.triggerEvent {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(FaroType.caption2())
-                    Text(trigger)
-                        .font(FaroType.caption())
-                }
-                .foregroundStyle(FaroPalette.purpleDeep)
-                .padding(FaroSpacing.sm)
-                .background(FaroPalette.purple.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: FaroRadius.sm, style: .continuous))
-            }
-
-            Spacer()
-
-            HStack {
-                Text("Est. premium")
-                    .font(FaroType.caption())
-                    .foregroundStyle(FaroPalette.ink.opacity(0.45))
-                Spacer()
-                Text("$\(Int(option.estimatedPremiumLow).formatted()) – $\(Int(option.estimatedPremiumHigh).formatted())/yr")
-                    .font(FaroType.subheadline(.semibold))
-                    .foregroundStyle(FaroPalette.ink)
-            }
-        }
-        .padding(FaroSpacing.md + 4)
-        .frame(maxWidth: .infinity)
-        .faroGlassCard(cornerRadius: FaroRadius.xl, material: .regularMaterial)
+    public static func == (lhs: CoverageOption, rhs: CoverageOption) -> Bool {
+        lhs.type == rhs.type
     }
 }
 
@@ -364,34 +601,16 @@ struct CoverageCard: View {
         CoverageDashboardView(
             results: ResultsResponse(
                 coverageOptions: [
-                    CoverageOption(
-                        type: "General Liability",
-                        description: "Covers third-party bodily injury and property damage claims.",
-                        estimatedPremiumLow: 800, estimatedPremiumHigh: 1500,
-                        confidence: 0.95, category: .required, triggerEvent: nil
-                    ),
-                    CoverageOption(
-                        type: "Workers Compensation",
-                        description: "Required by NJ law for any business with employees.",
-                        estimatedPremiumLow: 2000, estimatedPremiumHigh: 4000,
-                        confidence: 0.99, category: .required, triggerEvent: nil
-                    ),
-                    CoverageOption(
-                        type: "Cyber Liability",
-                        description: "Covers data breaches, ransomware, and regulatory fines.",
-                        estimatedPremiumLow: 1200, estimatedPremiumHigh: 3000,
-                        confidence: 0.80, category: .recommended, triggerEvent: nil
-                    ),
-                    CoverageOption(
-                        type: "Employment Practices Liability (EPLI)",
-                        description: "Protects against claims of wrongful termination, discrimination, and harassment.",
-                        estimatedPremiumLow: 1500, estimatedPremiumHigh: 4000,
-                        confidence: 0.72, category: .projected,
-                        triggerEvent: "Trigger: Headcount projected to exceed 15 employees"
-                    ),
+                    CoverageOption(type: "General Liability", description: "Covers third-party bodily injury and property damage claims.", estimatedPremiumLow: 800, estimatedPremiumHigh: 1500, confidence: 0.95, category: .required, triggerEvent: nil),
+                    CoverageOption(type: "Workers Compensation", description: "Required by NJ law for any business with employees.", estimatedPremiumLow: 2000, estimatedPremiumHigh: 4000, confidence: 0.99, category: .required, triggerEvent: nil),
+                    CoverageOption(type: "Cyber Liability", description: "Covers data breaches, ransomware, and regulatory fines.", estimatedPremiumLow: 1200, estimatedPremiumHigh: 3000, confidence: 0.80, category: .recommended, triggerEvent: nil),
+                    CoverageOption(type: "EPLI", description: "Protects against wrongful termination, discrimination, and harassment claims.", estimatedPremiumLow: 1500, estimatedPremiumHigh: 4000, confidence: 0.72, category: .projected, triggerEvent: "Trigger: Headcount projected to exceed 15 employees"),
                 ],
                 submissionPacketUrl: "",
-                voiceSummaryUrl: ""
+                voiceSummaryUrl: "",
+                riskProfile: nil,
+                submissionPacket: nil,
+                plainEnglishSummary: nil
             ),
             sessionId: "preview"
         )

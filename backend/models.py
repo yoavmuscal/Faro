@@ -60,6 +60,9 @@ class ResultsResponse(BaseModel):
     coverage_options: list[CoverageOption]
     submission_packet_url: str
     voice_summary_url: str
+    risk_profile: Optional[dict] = None
+    submission_packet: Optional[dict] = None
+    plain_english_summary: Optional[str] = None
 
 
 # ── Status (widget) ───────────────────────────────────────────────────────────
