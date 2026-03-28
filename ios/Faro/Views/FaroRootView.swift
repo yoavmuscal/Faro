@@ -103,12 +103,10 @@ struct FaroRootView: View {
                     .tag(FaroSection.analyze)
             }
 
-            if appState.hasResults {
-                Section("Analysis") {
-                    ForEach(FaroSection.analysisSections) { sec in
-                        Label(sec.title, systemImage: sec.systemImage)
-                            .tag(sec)
-                    }
+            Section("Analysis") {
+                ForEach(FaroSection.analysisSections) { sec in
+                    Label(sec.title, systemImage: sec.systemImage)
+                        .tag(sec)
                 }
             }
 
