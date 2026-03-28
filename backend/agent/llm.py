@@ -1,7 +1,8 @@
 """
 LLM abstraction layer.
 Primary: K2 Think V2 (MBZUAI) via OpenAI-compatible API.
-Fallback: Claude claude-sonnet-4-6 (or GPT-4o) if K2 times out or errors.
+Fallback 1: Google Gemini (gemini-2.5-flash).
+Fallback 2: Claude claude-sonnet-4-6 if both fail.
 """
 import os
 import asyncio
@@ -44,9 +45,28 @@ async def _call_claude_fallback(system: str, user: str) -> str:
     return msg.content[0].text
 
 
+async def _call_gemini_fallback(system: str, user: str) -> str:
+    from google import genai
+    from google.genai import types
+    
+    # Reads GEMINI_API_KEY from the environment automatically
+    client = genai.Client()
+    response = await client.aio.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=user,
+        config=types.GenerateContentConfig(
+            system_instruction=system,
+        )
+    )
+    return response.text
+
+
 async def chat_with_fallback(system: str, user: str) -> str:
-    """Try K2; if it times out or errors, fall back to Claude silently."""
+    """Try K2; if it times out or errors, fall back to Gemini then Claude."""
     try:
         return await asyncio.wait_for(_call_k2(system, user), timeout=K2_TIMEOUT_SECONDS)
     except Exception:
-        return await _call_claude_fallback(system, user)
+        try:
+            return await _call_gemini_fallback(system, user)
+        except Exception:
+            return await _call_claude_fallback(system, user)
