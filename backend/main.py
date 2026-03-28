@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     await db.close()
 
 
-app = FastAPI(title="Vela Insurance API", lifespan=lifespan)
+app = FastAPI(title="Faro Insurance API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

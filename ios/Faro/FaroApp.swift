@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct VelaApp: App {
+struct FaroApp: App {
     var body: some Scene {
         WindowGroup {
             OnboardingView()

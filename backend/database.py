@@ -14,7 +14,7 @@ def get_client() -> AsyncIOMotorClient:
 
 
 def get_db():
-    return get_client()[os.environ.get("MONGODB_DB", "vela")]
+    return get_client()[os.environ.get("MONGODB_DB", "faro")]
 
 
 async def save_session(session_id: str, data: dict) -> None:

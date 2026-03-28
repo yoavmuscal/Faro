@@ -30,7 +30,7 @@ final class CoverageDashboardViewModel: ObservableObject {
         isPlayingAudio = false
     }
 
-    // PDF generation lives in PDFBuilder — see ios/Vela/Utilities/PDFBuilder.swift
+    // PDF generation lives in PDFBuilder — see ios/Faro/Utilities/PDFBuilder.swift
 }
 
 // MARK: - View
