@@ -8,6 +8,13 @@ private struct PDFShareDocument: Identifiable {
     let url: URL
 }
 
+private struct PremiumSlice: Identifiable {
+    let id: String
+    let name: String
+    let value: Double
+    let color: Color
+}
+
 // MARK: - View Model
 
 @MainActor
@@ -131,6 +138,8 @@ struct CoverageDashboardView: View {
     @State private var pdfURL: URL?
     @State private var pdfShareDocument: PDFShareDocument?
     @State private var showCoverageDetail: CoverageOption?
+    @State private var dashboardAppeared = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     init(results: ResultsResponse, sessionId: String, businessName: String = "Business") {
         self.results = results
@@ -138,6 +147,8 @@ struct CoverageDashboardView: View {
         self.businessName = businessName
         _vm = StateObject(wrappedValue: CoverageDashboardViewModel(results: results))
     }
+
+    private var isWideLayout: Bool { horizontalSizeClass == .regular }
 
     private var sortedCoverage: [CoverageOption] {
         let order: [CoverageCategory] = [.required, .recommended, .projected]
@@ -161,39 +172,63 @@ struct CoverageDashboardView: View {
         return Int(sum / Double(opts.count) * 100)
     }
 
+    private var avgConfidence: Double {
+        let opts = results.coverageOptions
+        guard !opts.isEmpty else { return 0 }
+        return opts.map(\.confidence).reduce(0, +) / Double(opts.count)
+    }
+
+    private var premiumSlices: [PremiumSlice] {
+        let order: [CoverageCategory] = [.required, .recommended, .projected]
+        return order.compactMap { cat -> PremiumSlice? in
+            let sum = sortedCoverage.filter { $0.category == cat }.map(\.premiumMidpoint).reduce(0, +)
+            guard sum > 0 else { return nil }
+            return PremiumSlice(
+                id: cat.rawValue,
+                name: cat.label,
+                value: sum,
+                color: categoryTint(cat)
+            )
+        }
+    }
+
+    private var requiredOptions: [CoverageOption] {
+        sortedCoverage.filter { $0.category == .required }
+    }
+
+    private var widestRangeOption: CoverageOption? {
+        sortedCoverage.max(by: {
+            ($0.estimatedPremiumHigh - $0.estimatedPremiumLow) < ($1.estimatedPremiumHigh - $1.estimatedPremiumLow)
+        })
+    }
+
+    private var topPremiumOption: CoverageOption? {
+        sortedCoverage.max(by: { $0.premiumMidpoint < $1.premiumMidpoint })
+    }
+
     var body: some View {
         ScrollView {
-            VStack(spacing: FaroSpacing.lg) {
-                headerSection
-
-                overviewRow
-
-                premiumBarChart
-                    .padding(.horizontal, FaroSpacing.md)
-
-                Text("Coverage Options")
-                    .font(FaroType.headline())
-                    .foregroundStyle(FaroPalette.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, FaroSpacing.md)
-
-                coverageList(sortedCoverage: sortedCoverage)
-
-                actionButtons
-                    .padding(.horizontal, FaroSpacing.md)
-
-                Spacer(minLength: 40)
+            VStack(spacing: isWideLayout ? FaroSpacing.xl : FaroSpacing.lg) {
+                if isWideLayout {
+                    iPadDashboardContent
+                } else {
+                    phoneDashboardContent
+                }
             }
-            .padding(.top, FaroSpacing.md)
+            .padding(.top, isWideLayout ? FaroSpacing.lg : FaroSpacing.md)
+            .padding(.bottom, FaroSpacing.xl)
         }
         .faroCanvasBackground()
-        .navigationTitle("Coverage Analysis")
+        .navigationTitle("Coverage")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .onAppear {
             WidgetDataWriter.update(from: results, businessName: businessName)
             vm.preparePlaybackSession()
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.84)) {
+                dashboardAppeared = true
+            }
         }
         #if os(iOS)
         .sheet(item: $pdfShareDocument) { doc in
@@ -212,15 +247,103 @@ struct CoverageDashboardView: View {
         }
     }
 
-    // MARK: - Sections
+    // MARK: - Layouts
 
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.xs) {
-            Text(businessName.isEmpty ? "Your Coverage" : "\(businessName)")
-                .font(FaroType.title())
+    private var horizontalPagePadding: CGFloat { isWideLayout ? FaroSpacing.xl : FaroSpacing.md }
+
+    private var iPadDashboardContent: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.xl) {
+            dashboardHero
+                .opacity(dashboardAppeared ? 1 : 0)
+                .offset(y: dashboardAppeared ? 0 : 14)
+
+            metricStrip
+                .opacity(dashboardAppeared ? 1 : 0)
+                .offset(y: dashboardAppeared ? 0 : 18)
+                .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.04), value: dashboardAppeared)
+
+            HStack(alignment: .top, spacing: FaroSpacing.lg) {
+                premiumMixColumn
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                confidenceInsightColumn
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .opacity(dashboardAppeared ? 1 : 0)
+            .offset(y: dashboardAppeared ? 0 : 20)
+            .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.08), value: dashboardAppeared)
+
+            premiumRangeChartCard
+                .opacity(dashboardAppeared ? 1 : 0)
+            .offset(y: dashboardAppeared ? 0 : 22)
+            .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.12), value: dashboardAppeared)
+
+            HStack(alignment: .top, spacing: FaroSpacing.lg) {
+                coverageGapsCard
+                    .frame(maxWidth: .infinity)
+                snapshotActivityCard
+                    .frame(maxWidth: .infinity)
+            }
+            .opacity(dashboardAppeared ? 1 : 0)
+            .offset(y: dashboardAppeared ? 0 : 24)
+            .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.16), value: dashboardAppeared)
+
+            coverageOptionsSectionHeader
+
+            coverageList(sortedCoverage: sortedCoverage)
+
+            actionButtons
+        }
+        .padding(.horizontal, horizontalPagePadding)
+    }
+
+    private var phoneDashboardContent: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.lg) {
+            dashboardHero
+            metricStrip
+            premiumMixCard(maxWidth: 320, stackVertically: true)
+            confidenceInsightCard
+            premiumRangeChartCard
+            coverageGapsCard
+            snapshotActivityCard
+            coverageOptionsSectionHeader
+            coverageList(sortedCoverage: sortedCoverage)
+            actionButtons
+        }
+        .padding(.horizontal, horizontalPagePadding)
+    }
+
+    // MARK: - Hero & metrics
+
+    private var dashboardHero: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: FaroSpacing.sm) {
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [FaroPalette.purpleDeep, FaroPalette.purple],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: 36, height: 5)
+                Text("Analysis")
+                    .font(FaroType.caption(.semibold))
+                    .foregroundStyle(FaroPalette.purpleDeep.opacity(0.85))
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+            }
+
+            Text(businessName.isEmpty ? "Your coverage" : businessName)
+                .font(isWideLayout ? FaroType.largeTitle() : FaroType.title())
                 .foregroundStyle(FaroPalette.ink)
+                .multilineTextAlignment(.leading)
 
-            HStack(spacing: FaroSpacing.sm) {
+            Text("Premium estimates, confidence, and priority mix in one place.")
+                .font(FaroType.subheadline())
+                .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                .frame(maxWidth: isWideLayout ? 520 : .infinity, alignment: .leading)
+
+            FlowLayout(spacing: FaroSpacing.sm) {
                 let req = sortedCoverage.filter { $0.category == .required }.count
                 let rec = sortedCoverage.filter { $0.category == .recommended }.count
                 let proj = sortedCoverage.filter { $0.category == .projected }.count
@@ -229,65 +352,390 @@ struct CoverageDashboardView: View {
                 if rec > 0 { TagPill(text: "\(rec) recommended", icon: "star.fill", tint: FaroPalette.warning) }
                 if proj > 0 { TagPill(text: "\(proj) projected", icon: "arrow.up.right", tint: FaroPalette.purple) }
             }
+            .padding(.top, FaroSpacing.xs)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, FaroSpacing.md)
     }
 
-    private var overviewRow: some View {
-        HStack(spacing: FaroSpacing.sm + 2) {
-            StatCard(
+    private var metricStrip: some View {
+        Group {
+            if isWideLayout {
+                HStack(alignment: .top, spacing: FaroSpacing.md) {
+                    metricTiles
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: FaroSpacing.md) {
+                        metricTiles
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private var metricTiles: some View {
+        Group {
+            DashboardMetricTile(
                 title: "Policies",
                 value: "\(results.coverageOptions.count)",
+                subtitle: "lines reviewed",
                 icon: "shield.checkered",
                 tint: FaroPalette.purpleDeep
             )
-            StatCard(
-                title: "Est. Total",
+            .frame(maxWidth: .infinity, minHeight: isWideLayout ? 132 : nil, alignment: .topLeading)
+            .frame(minWidth: isWideLayout ? 0 : 148)
+            DashboardMetricTile(
+                title: "Est. annual",
                 value: "$\(Int(totalPremiumLow).formatted())–$\(Int(totalPremiumHigh).formatted())",
+                subtitle: "combined range",
                 icon: "dollarsign.circle.fill",
                 tint: FaroPalette.success
             )
-            StatCard(
+            .frame(maxWidth: .infinity, minHeight: isWideLayout ? 132 : nil, alignment: .topLeading)
+            .frame(minWidth: isWideLayout ? 0 : 168)
+            DashboardMetricTile(
                 title: "Confidence",
                 value: "\(avgConfidencePercent)%",
-                icon: "chart.bar.fill",
+                subtitle: "avg. model fit",
+                icon: "chart.line.uptrend.xyaxis",
                 tint: FaroPalette.info
             )
+            .frame(maxWidth: .infinity, minHeight: isWideLayout ? 132 : nil, alignment: .topLeading)
+            .frame(minWidth: isWideLayout ? 0 : 148)
         }
-        .padding(.horizontal, FaroSpacing.md)
     }
 
-    private var premiumBarChart: some View {
+    // MARK: - Charts (iPad columns)
+
+    /// iPad: full column width + vertical chart/legend so labels never get squeezed to zero width.
+    private var premiumMixColumn: some View {
+        premiumMixCard(maxWidth: .infinity, stackVertically: true)
+    }
+
+    private func premiumMixCard(maxWidth: CGFloat, stackVertically: Bool = false) -> some View {
+        let chartSide: CGFloat = {
+            if stackVertically {
+                return min(240, max(200, maxWidth.isFinite ? maxWidth - FaroSpacing.lg * 2 : 220))
+            }
+            return min(maxWidth.isFinite ? maxWidth * 0.45 : 200, 220)
+        }()
+        return VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            sectionTitle("Premium by priority", subtitle: "Share of estimated premium")
+
+            if premiumSlices.isEmpty {
+                Text("No premium data yet.")
+                    .font(FaroType.subheadline())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                    .frame(maxWidth: .infinity, minHeight: 200, alignment: .center)
+            } else {
+                Group {
+                    if stackVertically {
+                        VStack(alignment: .center, spacing: FaroSpacing.md) {
+                            premiumDonutChart(side: chartSide)
+                            premiumMixLegend
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    } else {
+                        HStack(alignment: .center, spacing: FaroSpacing.lg) {
+                            premiumDonutChart(side: chartSide)
+                            premiumMixLegend
+                                .frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(1)
+                        }
+                    }
+                }
+            }
+        }
+        .faroCoverageDashboardCardSurface(maxOuterWidth: maxWidth.isInfinite ? nil : maxWidth)
+        .overlay {
+            RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.5), FaroPalette.purple.opacity(0.12)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        }
+    }
+
+    private func premiumDonutChart(side: CGFloat) -> some View {
+        Chart(premiumSlices) { slice in
+            SectorMark(
+                angle: .value("Premium", slice.value),
+                innerRadius: .ratio(0.58),
+                angularInset: 2
+            )
+            .foregroundStyle(slice.color.gradient)
+            .cornerRadius(3)
+        }
+        .frame(width: side, height: side)
+        .chartBackground { _ in
+            Circle()
+                .fill(FaroPalette.purpleDeep.opacity(0.04))
+        }
+        .animation(.smooth(duration: 0.65), value: premiumSlices.map(\.value))
+    }
+
+    private var premiumMixLegend: some View {
         VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-            Text("Premium Estimates")
+            ForEach(premiumSlices) { slice in
+                HStack(alignment: .center, spacing: 10) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(slice.color)
+                        .frame(width: 10, height: 10)
+                    Text(slice.name)
+                        .font(FaroType.caption(.semibold))
+                        .foregroundStyle(FaroPalette.ink)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Text(slice.value, format: .currency(code: "USD").precision(.fractionLength(0)))
+                        .font(FaroType.caption(.bold))
+                        .foregroundStyle(FaroPalette.ink.opacity(0.75))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .layoutPriority(1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var confidenceInsightColumn: some View {
+        confidenceInsightCard
+    }
+
+    private var confidenceInsightCard: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            sectionTitle("Model confidence", subtitle: "Per line confidence trend")
+
+            VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                Gauge(value: avgConfidence) {
+                    Text("Average")
+                        .font(FaroType.caption2(.semibold))
+                        .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                } currentValueLabel: {
+                    Text("\(avgConfidencePercent)%")
+                        .font(FaroType.title3(.bold))
+                        .foregroundStyle(FaroPalette.purpleDeep)
+                }
+                .gaugeStyle(.accessoryLinearCapacity)
+                .tint(
+                    LinearGradient(
+                        colors: [FaroPalette.info, FaroPalette.purpleDeep],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+
+                Chart(Array(sortedCoverage.enumerated()), id: \.element.id) { index, option in
+                    LineMark(
+                        x: .value("Index", index),
+                        y: .value("Confidence", option.confidence)
+                    )
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(FaroPalette.purpleDeep.gradient)
+
+                    AreaMark(
+                        x: .value("Index", index),
+                        y: .value("Confidence", option.confidence)
+                    )
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [FaroPalette.purpleDeep.opacity(0.28), FaroPalette.purpleDeep.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                }
+                .chartYScale(domain: 0...1)
+                .chartXAxis(.hidden)
+                .chartYAxis {
+                    AxisMarks(values: [0, 0.5, 1]) { v in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(FaroPalette.ink.opacity(0.08))
+                        AxisValueLabel {
+                            if let d = v.as(Double.self) {
+                                Text("\(Int(d * 100))%")
+                                    .font(FaroType.caption2())
+                                    .foregroundStyle(FaroPalette.ink.opacity(0.4))
+                            }
+                        }
+                    }
+                }
+                .frame(height: isWideLayout ? 220 : 120)
+                .frame(maxWidth: .infinity)
+                .animation(.smooth(duration: 0.7), value: sortedCoverage.count)
+            }
+            .frame(maxWidth: .infinity, minHeight: isWideLayout ? 300 : nil, alignment: .topLeading)
+        }
+        .faroCoverageDashboardCardSurface()
+        .overlay {
+            RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.45), FaroPalette.info.opacity(0.15)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        }
+    }
+
+    private var premiumRangeChartCard: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            sectionTitle("Premium bands", subtitle: "Low–high estimate by line")
+
+            if sortedCoverage.isEmpty {
+                Text("No premium data yet.")
+                    .font(FaroType.subheadline())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                    .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
+            } else {
+                PremiumBandsTable(
+                    options: sortedCoverage,
+                    isWideLayout: isWideLayout,
+                    categoryTint: categoryTint
+                )
+            }
+        }
+        .faroCoverageDashboardCardSurface()
+    }
+
+    // MARK: - Insight cards
+
+    private var coverageGapsCard: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            HStack(spacing: FaroSpacing.sm) {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.title3)
+                    .foregroundStyle(FaroPalette.danger)
+                sectionTitle("Coverage gaps", subtitle: "Required items to address first")
+            }
+
+            if requiredOptions.isEmpty {
+                Text("No required gaps flagged — review recommended lines to strengthen protection.")
+                    .font(FaroType.subheadline())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                    ForEach(requiredOptions.prefix(5)) { opt in
+                        HStack(alignment: .top, spacing: 10) {
+                            Circle()
+                                .fill(FaroPalette.danger.opacity(0.85))
+                                .frame(width: 6, height: 6)
+                                .padding(.top, 6)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(opt.type)
+                                    .font(FaroType.subheadline(.semibold))
+                                    .foregroundStyle(FaroPalette.ink)
+                                Text(opt.description)
+                                    .font(FaroType.caption())
+                                    .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                                    .lineLimit(2)
+                            }
+                        }
+                    }
+                    if requiredOptions.count > 5 {
+                        Text("+ \(requiredOptions.count - 5) more required")
+                            .font(FaroType.caption(.semibold))
+                            .foregroundStyle(FaroPalette.purpleDeep)
+                    }
+                }
+            }
+        }
+        .faroCoverageDashboardCardSurface()
+    }
+
+    private var snapshotActivityCard: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            HStack(spacing: FaroSpacing.sm) {
+                Image(systemName: "sparkles")
+                    .font(.title3)
+                    .foregroundStyle(FaroPalette.purpleDeep)
+                sectionTitle("Snapshot", subtitle: "Highest-impact lines")
+            }
+
+            VStack(alignment: .leading, spacing: FaroSpacing.md) {
+                snapshotRow(
+                    title: "Largest premium",
+                    value: topPremiumOption?.type ?? "—",
+                    detail: topPremiumOption.map { opt in
+                        "$\(Int(opt.premiumMidpoint).formatted()) est."
+                    } ?? ""
+                )
+                snapshotRow(
+                    title: "Widest uncertainty",
+                    value: widestRangeOption?.type ?? "—",
+                    detail: widestRangeOption.map { opt in
+                        "$\(Int(opt.estimatedPremiumLow).formatted())–$\(Int(opt.estimatedPremiumHigh).formatted())"
+                    } ?? ""
+                )
+                snapshotRow(
+                    title: "Total exposure band",
+                    value: "$\(Int(totalPremiumLow).formatted())–$\(Int(totalPremiumHigh).formatted())",
+                    detail: "Across \(results.coverageOptions.count) policies"
+                )
+            }
+        }
+        .faroCoverageDashboardCardSurface()
+    }
+
+    private func snapshotRow(title: String, value: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(FaroType.caption2(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.38))
+                .tracking(0.4)
+            Text(value)
                 .font(FaroType.headline())
                 .foregroundStyle(FaroPalette.ink)
-
-            Chart(sortedCoverage) { option in
-                BarMark(
-                    x: .value("Premium", option.premiumMidpoint),
-                    y: .value("Type", option.type)
-                )
-                .foregroundStyle(categoryTint(option.category).gradient)
-                .cornerRadius(8)
-                .annotation(position: .trailing) {
-                    Text("$\(Int(option.premiumMidpoint).formatted())")
-                        .font(FaroType.caption2())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.6))
-                }
+                .lineLimit(2)
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.45))
             }
-            .chartXAxis(.hidden)
-            .chartYAxis {
-                AxisMarks { _ in
-                    AxisValueLabel()
-                        .font(FaroType.caption2())
-                }
-            }
-            .frame(height: CGFloat(sortedCoverage.count) * 44 + 20)
         }
-        .padding(FaroSpacing.md)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(FaroSpacing.sm + 2)
+        .background(
+            RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                .fill(FaroPalette.surface.opacity(0.5))
+        )
+    }
+
+    private func sectionTitle(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(FaroType.headline())
+                .foregroundStyle(FaroPalette.ink)
+            Text(subtitle)
+                .font(FaroType.caption())
+                .foregroundStyle(FaroPalette.ink.opacity(0.45))
+        }
+    }
+
+    private var coverageOptionsSectionHeader: some View {
+        HStack {
+            Text("All coverages")
+                .font(FaroType.title3())
+                .foregroundStyle(FaroPalette.ink)
+            Spacer()
+            Text("\(sortedCoverage.count) lines")
+                .font(FaroType.caption(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.4))
+        }
+        .padding(.top, FaroSpacing.sm)
+        .padding(.horizontal, FaroSpacing.lg)
     }
 
     @ViewBuilder
@@ -302,7 +750,6 @@ struct CoverageDashboardView: View {
                 .buttonStyle(.faroScale)
             }
         }
-        .padding(.horizontal, FaroSpacing.md)
     }
 
     @ViewBuilder
@@ -358,6 +805,165 @@ struct CoverageDashboardView: View {
         case .recommended: return FaroPalette.warning
         case .projected: return FaroPalette.purple
         }
+    }
+}
+
+// MARK: - Dashboard card surface (aligned padding / width)
+
+private extension View {
+    /// Consistent inner padding and glass card so Coverage dashboard tiles line up on iPad.
+    func faroCoverageDashboardCardSurface(maxOuterWidth: CGFloat? = nil) -> some View {
+        self
+            .padding(FaroSpacing.lg)
+            .frame(maxWidth: maxOuterWidth ?? .infinity, alignment: .leading)
+            .faroGlassCard(cornerRadius: FaroRadius.xl)
+    }
+}
+
+// MARK: - Premium bands table (aligned rows; fixes Chart Y-axis / bar center mismatch)
+
+private struct PremiumBandsTable: View {
+    let options: [CoverageOption]
+    let isWideLayout: Bool
+    let categoryTint: (CoverageCategory) -> Color
+
+    private var maxDomain: Double {
+        let peak = options.map(\.estimatedPremiumHigh).max() ?? 1
+        return max(peak * 1.06, 1)
+    }
+
+    private var labelColumnWidth: CGFloat { isWideLayout ? 272 : 156 }
+    private var valueColumnWidth: CGFloat { isWideLayout ? 108 : 96 }
+    private var barHeight: CGFloat { isWideLayout ? 22 : 20 }
+    private var rowVerticalPadding: CGFloat { isWideLayout ? 10 : 8 }
+    private var columnGap: CGFloat { FaroSpacing.md }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
+                PremiumBandRow(
+                    option: option,
+                    maxDomain: maxDomain,
+                    labelWidth: labelColumnWidth,
+                    valueWidth: valueColumnWidth,
+                    barHeight: barHeight,
+                    rowPadding: rowVerticalPadding,
+                    columnGap: columnGap,
+                    categoryTint: categoryTint,
+                    stripe: index.isMultiple(of: 2)
+                )
+
+                if index < options.count - 1 {
+                    Rectangle()
+                        .fill(FaroPalette.ink.opacity(0.1))
+                        .frame(height: 0.5)
+                        .padding(.leading, labelColumnWidth + columnGap)
+                }
+            }
+
+            premiumAxisRow
+                .padding(.top, FaroSpacing.sm)
+        }
+    }
+
+    private var premiumAxisRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: columnGap) {
+            Color.clear
+                .frame(width: labelColumnWidth)
+                .accessibilityHidden(true)
+
+            HStack {
+                Text("$0")
+                Spacer(minLength: 8)
+                Text(maxDomain / 2, format: .currency(code: "USD").precision(.fractionLength(0)))
+                Spacer(minLength: 8)
+                Text(maxDomain, format: .currency(code: "USD").precision(.fractionLength(0)))
+            }
+            .font(FaroType.caption2())
+            .foregroundStyle(FaroPalette.ink.opacity(0.42))
+            .monospacedDigit()
+            .frame(maxWidth: .infinity)
+
+            Color.clear
+                .frame(width: valueColumnWidth)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+private struct PremiumBandRow: View {
+    let option: CoverageOption
+    let maxDomain: Double
+    let labelWidth: CGFloat
+    let valueWidth: CGFloat
+    let barHeight: CGFloat
+    let rowPadding: CGFloat
+    let columnGap: CGFloat
+    let categoryTint: (CoverageCategory) -> Color
+    let stripe: Bool
+
+    var body: some View {
+        HStack(alignment: .center, spacing: columnGap) {
+            Text(option.type)
+                .font(FaroType.subheadline(.semibold))
+                .foregroundStyle(FaroPalette.ink)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: labelWidth, alignment: .leading)
+                .layoutPriority(1)
+
+            GeometryReader { geo in
+                let w = max(geo.size.width, 1)
+                let lowX = (option.estimatedPremiumLow / maxDomain) * w
+                let highX = (option.estimatedPremiumHigh / maxDomain) * w
+                let barW = max(highX - lowX, 5)
+                let tint = categoryTint(option.category)
+
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(FaroPalette.ink.opacity(0.07))
+                        .frame(height: barHeight)
+
+                    ForEach([0.25, 0.5, 0.75], id: \.self) { frac in
+                        Rectangle()
+                            .fill(FaroPalette.ink.opacity(0.06))
+                            .frame(width: 1, height: barHeight)
+                            .offset(x: CGFloat(frac) * w - 0.5)
+                    }
+
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [tint.opacity(0.95), tint.opacity(0.72)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: barW, height: barHeight)
+                        .offset(x: lowX)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            }
+            .frame(height: max(barHeight, 28))
+            .frame(maxWidth: .infinity)
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("$\(Int(option.premiumMidpoint).formatted())")
+                    .font(FaroType.caption(.semibold))
+                    .foregroundStyle(FaroPalette.ink)
+                    .monospacedDigit()
+                Text("$\(Int(option.estimatedPremiumLow).formatted())–$\(Int(option.estimatedPremiumHigh).formatted())")
+                    .font(FaroType.caption2())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.42))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .multilineTextAlignment(.trailing)
+            }
+            .frame(width: valueWidth, alignment: .trailing)
+        }
+        .padding(.vertical, rowPadding)
+        .background(stripe ? FaroPalette.purpleDeep.opacity(0.04) : Color.clear)
     }
 }
 
@@ -601,39 +1207,72 @@ struct CoverageDetailSheet: View {
     }
 }
 
-// MARK: - Stat Card
+// MARK: - Dashboard metric tile
 
-struct StatCard: View {
+private struct DashboardMetricTile: View {
     let title: String
     let value: String
+    let subtitle: String
     let icon: String
     let tint: Color
 
     var body: some View {
-        VStack(spacing: FaroSpacing.sm) {
-            ZStack {
-                Circle()
-                    .fill(tint.gradient)
-                    .frame(width: 36, height: 36)
-                    .shadow(color: tint.opacity(0.25), radius: 8, y: 2)
+        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+            HStack(spacing: FaroSpacing.sm) {
+                ZStack {
+                    Circle()
+                        .fill(tint.gradient)
+                        .frame(width: 40, height: 40)
+                        .shadow(color: tint.opacity(0.28), radius: 10, y: 3)
 
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
+                    Image(systemName: icon)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                Spacer(minLength: 0)
             }
 
             Text(value)
-                .font(FaroType.subheadline(.bold))
+                .font(FaroType.title3(.bold))
                 .foregroundStyle(FaroPalette.ink)
-                .minimumScaleFactor(0.5)
-                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+                .lineLimit(2)
+
             Text(title)
+                .font(FaroType.caption(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.55))
+
+            Text(subtitle)
                 .font(FaroType.caption2())
-                .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                .foregroundStyle(FaroPalette.ink.opacity(0.38))
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, FaroSpacing.md + 4)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(FaroSpacing.md + 2)
+        .background {
+            RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
+                .fill(.regularMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [tint.opacity(0.14), FaroPalette.surface.opacity(0.3)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.45), tint.opacity(0.22)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.75
+                )
+        }
     }
 }
 
