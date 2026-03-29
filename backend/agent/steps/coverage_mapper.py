@@ -9,6 +9,8 @@ trigger events. A deterministic rules engine then overwrites the premium
 estimates so numbers are stable and explainable.  When the rules engine has no
 formula for a niche coverage type, the LLM estimate is kept as a fallback.
 """
+from __future__ import annotations
+
 import json
 import logging
 

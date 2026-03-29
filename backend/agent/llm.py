@@ -49,7 +49,13 @@ def _require_client():
         raise RuntimeError(
             "google-genai is not installed. Install backend requirements before running Gemini-backed steps."
         )
-    return genai.Client(), types
+    api_key = (os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or "").strip()
+    if not api_key:
+        raise RuntimeError(
+            "Missing Gemini API key. Set GEMINI_API_KEY or GOOGLE_API_KEY in backend/.env "
+            "(copy from backend/.env.example). The iOS app does not send this key; restart the API after editing .env."
+        )
+    return genai.Client(api_key=api_key), types
 
 
 def _coerce_block_reason(response: Any) -> str | None:

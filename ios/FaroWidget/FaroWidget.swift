@@ -1,5 +1,6 @@
-import WidgetKit
+import AppIntents
 import SwiftUI
+import WidgetKit
 
 private let widgetSuiteName = "group.com.faro.shared"
 private let widgetSnapshotKey = "coverage_snapshot"
@@ -107,6 +108,31 @@ struct CoverageEntry: TimelineEntry {
 
     var widgetURL: URL? {
         URL(string: "faro://\(destination.rawValue)")
+    }
+
+    func replacingDestination(_ dest: WidgetDestination) -> CoverageEntry {
+        CoverageEntry(
+            date: date,
+            status: status,
+            businessName: businessName,
+            headline: headline,
+            message: message,
+            isInProgress: isInProgress,
+            completedSteps: completedSteps,
+            totalSteps: totalSteps,
+            nextRenewalDays: nextRenewalDays,
+            policyCount: policyCount,
+            requiredCount: requiredCount,
+            recommendedCount: recommendedCount,
+            projectedCount: projectedCount,
+            topCoverageType: topCoverageType,
+            nextActionTitle: nextActionTitle,
+            destination: dest,
+            coverageLines: coverageLines,
+            premiumLow: premiumLow,
+            premiumHigh: premiumHigh,
+            averageConfidence: averageConfidence
+        )
     }
 
     var progressFraction: Double {
@@ -237,23 +263,37 @@ private struct WidgetSnapshot: Decodable {
 
 // MARK: - Provider
 
-struct CoverageProvider: TimelineProvider {
+struct CoverageProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> CoverageEntry {
         .placeholder
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (CoverageEntry) -> Void) {
-        completion(loadEntry())
+    func snapshot(for configuration: FaroWidgetConfigurationIntent, in context: Context) async -> CoverageEntry {
+        resolvedEntry(configuration: configuration)
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<CoverageEntry>) -> Void) {
-        let entry = loadEntry()
+    func timeline(for configuration: FaroWidgetConfigurationIntent, in context: Context) async -> Timeline<CoverageEntry> {
+        let entry = resolvedEntry(configuration: configuration)
         let refreshMinutes = entry.isInProgress ? 5 : 30
         let next = Calendar.current.date(byAdding: .minute, value: refreshMinutes, to: .now) ?? .now.addingTimeInterval(Double(refreshMinutes * 60))
-        completion(Timeline(entries: [entry], policy: .after(next)))
+        return Timeline(entries: [entry], policy: .after(next))
     }
 
-    private func loadEntry() -> CoverageEntry {
+    private func resolvedEntry(configuration: FaroWidgetConfigurationIntent) -> CoverageEntry {
+        let base = loadBaseEntry()
+        switch configuration.tapDestination ?? .matchSnapshot {
+        case .matchSnapshot:
+            return base
+        case .analyze:
+            return base.replacingDestination(.analyze)
+        case .coverage:
+            return base.replacingDestination(.coverage)
+        case .submission:
+            return base.replacingDestination(.submission)
+        }
+    }
+
+    private func loadBaseEntry() -> CoverageEntry {
         guard let defaults = UserDefaults(suiteName: widgetSuiteName) else {
             return .placeholder
         }
@@ -319,7 +359,7 @@ struct FaroWidget: Widget {
     let kind = "FaroWidget"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: CoverageProvider()) { entry in
+        AppIntentConfiguration(kind: kind, intent: FaroWidgetConfigurationIntent.self, provider: CoverageProvider()) { entry in
             FaroWidgetView(entry: entry)
                 .widgetURL(entry.widgetURL)
                 .containerBackground(for: .widget) {
@@ -332,8 +372,10 @@ struct FaroWidget: Widget {
             .systemSmall,
             .systemMedium,
             .systemLarge,
+            .systemExtraLarge,
             .accessoryInline,
-            .accessoryRectangular
+            .accessoryRectangular,
+            .accessoryCircular
         ])
     }
 }
@@ -355,17 +397,21 @@ struct FaroWidgetView: View {
                 MediumWidgetView(entry: entry)
             case .systemLarge:
                 LargeWidgetView(entry: entry)
+            case .systemExtraLarge:
+                ExtraLargeWidgetView(entry: entry)
             case .accessoryInline:
                 AccessoryInlineWidgetView(entry: entry)
             case .accessoryRectangular:
                 AccessoryRectangularWidgetView(entry: entry)
+            case .accessoryCircular:
+                AccessoryCircularWidgetView(entry: entry)
             default:
                 SmallWidgetView(entry: entry)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            if family == .systemSmall || family == .systemMedium || family == .systemLarge {
+            if family == .systemSmall || family == .systemMedium || family == .systemLarge || family == .systemExtraLarge {
                 WidgetCanvasBackground(status: entry.status, colorScheme: colorScheme)
             }
         }
@@ -782,7 +828,37 @@ private struct LargeMetricTile: View {
     }
 }
 
+// MARK: - Extra large (iPad)
+
+private struct ExtraLargeWidgetView: View {
+    let entry: CoverageEntry
+
+    var body: some View {
+        LargeWidgetView(entry: entry)
+            .padding(6)
+    }
+}
+
 // MARK: - Lock Screen accessories
+
+private struct AccessoryCircularWidgetView: View {
+    let entry: CoverageEntry
+
+    var body: some View {
+        Gauge(value: circularProgress) {
+            Image(systemName: entry.status.icon)
+                .widgetAccentable()
+        }
+        .gaugeStyle(.accessoryCircularCapacity)
+    }
+
+    private var circularProgress: Double {
+        if entry.isInProgress {
+            return min(1, max(0.1, entry.progressFraction))
+        }
+        return 1
+    }
+}
 
 private struct AccessoryInlineWidgetView: View {
     let entry: CoverageEntry
@@ -949,6 +1025,7 @@ private struct WidgetHeader: View {
 
     private var relativeUpdatedAt: String {
         let minutes = max(0, Int(Date().timeIntervalSince(entry.date) / 60))
+        if minutes >= 10_080 { return "stale" }
         if minutes == 0 { return "now" }
         if minutes < 60 { return "\(minutes)m" }
         if minutes < 1440 { return "\(minutes / 60)h" }
@@ -1070,6 +1147,18 @@ private enum FaroWidgetColors {
 }
 
 #Preview("Accessory Rect", as: .accessoryRectangular) {
+    FaroWidget()
+} timeline: {
+    CoverageEntry.gapPreview
+}
+
+#Preview("Accessory Circle", as: .accessoryCircular) {
+    FaroWidget()
+} timeline: {
+    CoverageEntry.inProgressPreview
+}
+
+#Preview("Extra Large", as: .systemExtraLarge) {
     FaroWidget()
 } timeline: {
     CoverageEntry.gapPreview
