@@ -102,10 +102,12 @@ Important:
 async def run(state: dict) -> dict:
     intake = IntakeRequest.model_validate(state["intake"])
     risk_profile = normalize_risk_profile_payload(state["risk_profile"], intake=intake)
+    cov_filter = state.get("coverage_apply_evidence_filter", True)
     coverage_requirements = normalize_coverage_requirements_payload(
         state["coverage_requirements"],
         intake=intake,
         risk_profile=risk_profile,
+        apply_evidence_filter=cov_filter,
     )
 
     prompt = USER_PROMPT_TEMPLATE.format(

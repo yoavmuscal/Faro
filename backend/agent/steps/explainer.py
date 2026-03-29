@@ -139,10 +139,12 @@ async def run(state: dict) -> dict:
         if state.get("risk_profile") is not None
         else None
     )
+    cov_filter = state.get("coverage_apply_evidence_filter", True)
     rows = normalize_coverage_requirements_payload(
         state.get("coverage_requirements") or [],
         intake=intake,
         risk_profile=risk,
+        apply_evidence_filter=cov_filter,
     )
 
     now = [

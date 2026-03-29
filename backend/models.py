@@ -499,6 +499,73 @@ def normalize_risk_profile_payload(
     return risk_profile
 
 
+def normalize_risk_profile_payload_relaxed(
+    payload: Any,
+    *,
+    intake: IntakeRequest | None = None,
+) -> RiskProfile:
+    """Best-effort risk profile when strict guardrails reject the LLM output.
+
+    Repaired payloads are re-run through ``normalize_risk_profile_payload`` so the
+    rest of the pipeline (coverage rules, submission) still sees a valid profile.
+    """
+    base = validate_risk_profile_payload(payload)
+    desc = (intake.description if intake else "") or ""
+    name = (intake.business_name if intake else "") or ""
+
+    industry = (
+        _meaningful_string(base.industry)
+        or (desc.strip()[:120] if desc.strip() else None)
+        or "General business"
+    )
+    sic = _meaningful_string(base.sic_code) or "7299"
+
+    summary = (_meaningful_string(base.reasoning_summary) or "").strip()
+    if len(summary.split()) < 6:
+        summary = (
+            f"{name} faces typical small-business liability and operational exposures "
+            "based on its stated activities. Underwriters should validate class codes, "
+            "payroll, and operations before binding coverage."
+        ).strip()
+
+    exposures = list(base.primary_exposures)
+    if not exposures:
+        tail = desc.strip()[:160] if desc.strip() else "General business operations"
+        exposures = [f"Operational and customer-facing exposures typical for: {tail}"]
+
+    state_req = list(base.state_requirements)
+    emp_impl = list(base.employee_implications)
+
+    if intake and intake.employee_count > 0:
+        if not emp_impl and not state_req:
+            emp_impl = [
+                f"The business reports {intake.employee_count} employees; review "
+                f"{intake.state} workers compensation and related employer obligations."
+            ]
+    elif intake and not state_req:
+        state_req = [
+            f"Review applicable insurance and filing obligations for operations in {intake.state}."
+        ]
+
+    revenue = _meaningful_string(base.revenue_exposure) or (
+        "Liability exposure generally scales with revenue, customer traffic, and contracts."
+    )
+    unusual = list(base.unusual_risks)
+
+    repaired = {
+        "industry": industry,
+        "sic_code": sic,
+        "risk_level": base.risk_level,
+        "primary_exposures": exposures,
+        "state_requirements": state_req,
+        "employee_implications": emp_impl,
+        "revenue_exposure": revenue,
+        "unusual_risks": unusual,
+        "reasoning_summary": summary,
+    }
+    return normalize_risk_profile_payload(repaired, intake=intake)
+
+
 _CATEGORY_PRECEDENCE = {
     CoverageCategory.projected: 0,
     CoverageCategory.recommended: 1,
@@ -644,12 +711,13 @@ def normalize_coverage_requirements_payload(
     *,
     intake: IntakeRequest,
     risk_profile: RiskProfile | None,
+    apply_evidence_filter: bool = True,
 ) -> list[CoverageRequirement]:
     validated = validate_coverage_requirements_payload(payload)
     deduped: dict[str, CoverageRequirement] = {}
 
     for requirement in validated:
-        if not _has_supported_coverage_evidence(
+        if apply_evidence_filter and not _has_supported_coverage_evidence(
             requirement.type,
             intake=intake,
             risk_profile=risk_profile,
@@ -964,6 +1032,7 @@ def build_results_response(
     plain_english_summary: Any,
     voice_url: Any,
     submission_packet_url: Any,
+    coverage_apply_evidence_filter: bool | None = None,
 ) -> ResultsResponse:
     intake = IntakeRequest.model_validate(intake_payload)
     risk_profile = (
@@ -971,10 +1040,14 @@ def build_results_response(
         if risk_profile_payload is not None
         else None
     )
+    _cov_filter = (
+        True if coverage_apply_evidence_filter is None else coverage_apply_evidence_filter
+    )
     coverage_requirements = normalize_coverage_requirements_payload(
         coverage_requirements_payload,
         intake=intake,
         risk_profile=risk_profile,
+        apply_evidence_filter=_cov_filter,
     )
     submission_packet = normalize_submission_packet_payload(
         submission_packet_payload,

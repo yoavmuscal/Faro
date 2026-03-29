@@ -6,6 +6,7 @@ from models import (
     build_results_response,
     normalize_coverage_requirements_payload,
     normalize_risk_profile_payload,
+    normalize_risk_profile_payload_relaxed,
     normalize_submission_packet_payload,
     validate_coverage_requirements_payload,
     validate_risk_profile_payload,
@@ -104,6 +105,41 @@ class ContractModelTests(unittest.TestCase):
         self.assertNotIn("Commercial Auto", names)
         general_liability = next(item for item in requirements if item.type == "General Liability")
         self.assertEqual(general_liability.category, CoverageCategory.required)
+
+    def test_risk_profile_relaxed_repairs_thin_llm_payload(self) -> None:
+        repaired = normalize_risk_profile_payload_relaxed(
+            {
+                "industry": "Daycare",
+                "sic_code": "8351",
+                "risk_level": "high",
+                "primary_exposures": ["Injury"],
+                "state_requirements": ["NJ rules apply."],
+                "employee_implications": ["Staff on payroll."],
+                "revenue_exposure": "Moderate",
+                "unusual_risks": [],
+                "reasoning_summary": "Too short",
+            },
+            intake=self.intake,
+        )
+        self.assertGreaterEqual(len(repaired.reasoning_summary.split()), 6)
+
+    def test_coverage_llm_only_skips_evidence_filter(self) -> None:
+        reqs = normalize_coverage_requirements_payload(
+            [
+                {
+                    "type": "Commercial Auto",
+                    "category": "recommended",
+                    "rationale": "Suggested without vehicle evidence.",
+                    "estimated_premium_low": 2000,
+                    "estimated_premium_high": 3200,
+                    "confidence": 0.55,
+                }
+            ],
+            intake=self.intake,
+            risk_profile=self.risk_profile,
+            apply_evidence_filter=False,
+        )
+        self.assertTrue(any(r.type == "Commercial Auto" for r in reqs))
 
     def test_risk_profile_guardrails_reject_thin_payload(self) -> None:
         with self.assertRaises(ValueError):

@@ -101,15 +101,20 @@ def _normalized_session_fields_from_state(state_snapshot: dict) -> dict:
         payload["risk_profile"] = risk_profile.model_dump(mode="json")
 
     coverage_requirements = []
+    cov_filter_raw = state_snapshot.get("coverage_apply_evidence_filter")
+    cov_filter = True if cov_filter_raw is None else bool(cov_filter_raw)
     if state_snapshot.get("coverage_requirements") is not None:
         coverage_requirements = normalize_coverage_requirements_payload(
             state_snapshot.get("coverage_requirements") or [],
             intake=intake,
             risk_profile=risk_profile,
+            apply_evidence_filter=cov_filter,
         )
         payload["coverage_requirements"] = _coverage_requirements_to_storage(
             coverage_requirements
         )
+    if cov_filter_raw is not None:
+        payload["coverage_apply_evidence_filter"] = cov_filter
 
     if state_snapshot.get("submission_packet") is not None:
         submission_packet = normalize_submission_packet_payload(
@@ -213,6 +218,7 @@ async def _run_pipeline_task(session_id: str, intake: dict):
             run_pipeline(session_id, intake, broadcast),
             timeout=PIPELINE_TIMEOUT_SECONDS,
         )
+        cov_evidence_filter = final_state.get("coverage_apply_evidence_filter")
         results = build_results_response(
             intake_payload=intake,
             risk_profile_payload=final_state.get("risk_profile"),
@@ -221,7 +227,9 @@ async def _run_pipeline_task(session_id: str, intake: dict):
             plain_english_summary=final_state.get("plain_english_summary"),
             voice_url=final_state.get("voice_url"),
             submission_packet_url=final_state.get("submission_packet_url"),
+            coverage_apply_evidence_filter=cov_evidence_filter,
         )
+        _cov_apply = True if cov_evidence_filter is None else bool(cov_evidence_filter)
         await db.save_session(session_id, {
             "pipeline_status": "complete",
             "risk_profile": (
@@ -233,8 +241,10 @@ async def _run_pipeline_task(session_id: str, intake: dict):
                     final_state.get("coverage_requirements") or [],
                     intake=IntakeRequest.model_validate(intake),
                     risk_profile=results.risk_profile,
+                    apply_evidence_filter=_cov_apply,
                 )
             ),
+            "coverage_apply_evidence_filter": _cov_apply,
             "submission_packet": (
                 results.submission_packet.model_dump(mode="json")
                 if results.submission_packet else None
@@ -371,6 +381,7 @@ async def get_results(session_id: str):
             plain_english_summary=session.get("plain_english_summary"),
             voice_url=session.get("voice_url"),
             submission_packet_url=session.get("submission_packet_url"),
+            coverage_apply_evidence_filter=session.get("coverage_apply_evidence_filter"),
         )
     except Exception as exc:
         raise HTTPException(500, f"Stored results are malformed: {exc}") from exc

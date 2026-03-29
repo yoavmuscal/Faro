@@ -5,9 +5,9 @@ Output: structured risk profile JSON
 Model:  Gemini 3 Flash with Gemini 2.5 Flash fallback
 """
 
-from models import IntakeRequest, normalize_risk_profile_payload
+from models import IntakeRequest, normalize_risk_profile_payload, normalize_risk_profile_payload_relaxed
 
-from ..llm import generate_validated_json_with_fallback
+from ..llm import GeminiRoutingError, generate_validated_json_with_fallback
 
 
 SYSTEM_PROMPT = """You are a commercial insurance risk analyst with deep expertise in small business risk assessment.
@@ -53,11 +53,22 @@ async def run(state: dict) -> dict:
         state=intake.state,
         annual_revenue=intake.annual_revenue,
     )
-    risk_profile, llm_meta = await generate_validated_json_with_fallback(
-        system=SYSTEM_PROMPT,
-        user=prompt,
-        validator=lambda parsed: normalize_risk_profile_payload(parsed, intake=intake),
-    )
+    try:
+        risk_profile, llm_meta = await generate_validated_json_with_fallback(
+            system=SYSTEM_PROMPT,
+            user=prompt,
+            validator=lambda parsed: normalize_risk_profile_payload(parsed, intake=intake),
+        )
+    except GeminiRoutingError as exc:
+        risk_profile, llm_meta = await generate_validated_json_with_fallback(
+            system=SYSTEM_PROMPT,
+            user=prompt,
+            validator=lambda parsed: normalize_risk_profile_payload_relaxed(
+                parsed, intake=intake
+            ),
+        )
+        llm_meta["risk_profiler_relaxed_fallback"] = True
+        llm_meta["strict_risk_profiler_error"] = str(exc)
 
     analysis_meta = dict(state.get("analysis_meta") or {})
     analysis_meta["risk_profiler"] = llm_meta

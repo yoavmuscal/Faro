@@ -22,7 +22,7 @@ from models import (
     normalize_risk_profile_payload,
 )
 
-from ..llm import generate_validated_json_with_fallback
+from ..llm import GeminiRoutingError, generate_validated_json_with_fallback
 from ..pricing_rules import estimate_confidence, estimate_premium
 
 log = logging.getLogger(__name__)
@@ -145,22 +145,40 @@ async def run(state: dict) -> dict:
         employee_count=intake.employee_count,
         annual_revenue=intake.annual_revenue,
     )
-    coverage_requirements, llm_meta = await generate_validated_json_with_fallback(
-        system=SYSTEM_PROMPT,
-        user=prompt,
-        validator=lambda parsed: normalize_coverage_requirements_payload(
-            parsed,
-            intake=intake,
-            risk_profile=risk_profile,
-        ),
-    )
-
-    coverage_requirements = _apply_rules_engine(
-        coverage_requirements, intake, risk_profile,
-    )
+    coverage_apply_evidence_filter = True
+    try:
+        coverage_requirements, llm_meta = await generate_validated_json_with_fallback(
+            system=SYSTEM_PROMPT,
+            user=prompt,
+            validator=lambda parsed: normalize_coverage_requirements_payload(
+                parsed,
+                intake=intake,
+                risk_profile=risk_profile,
+                apply_evidence_filter=True,
+            ),
+        )
+        coverage_requirements = _apply_rules_engine(
+            coverage_requirements, intake, risk_profile,
+        )
+        pricing_mode = "hybrid"
+    except GeminiRoutingError as exc:
+        coverage_requirements, llm_meta = await generate_validated_json_with_fallback(
+            system=SYSTEM_PROMPT,
+            user=prompt,
+            validator=lambda parsed: normalize_coverage_requirements_payload(
+                parsed,
+                intake=intake,
+                risk_profile=risk_profile,
+                apply_evidence_filter=False,
+            ),
+        )
+        coverage_apply_evidence_filter = False
+        pricing_mode = "llm_only"
+        llm_meta["coverage_llm_only_fallback"] = True
+        llm_meta["strict_coverage_mapper_error"] = str(exc)
 
     analysis_meta = dict(state.get("analysis_meta") or {})
-    analysis_meta["coverage_mapper"] = {**llm_meta, "pricing_mode": "hybrid"}
+    analysis_meta["coverage_mapper"] = {**llm_meta, "pricing_mode": pricing_mode}
 
     return {
         **state,
@@ -168,5 +186,6 @@ async def run(state: dict) -> dict:
             requirement.model_dump(mode="json")
             for requirement in coverage_requirements
         ],
+        "coverage_apply_evidence_filter": coverage_apply_evidence_filter,
         "analysis_meta": analysis_meta,
     }
