@@ -38,6 +38,8 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     @Published var state: ConnectionState = .disconnected
     @Published var transcript: [ConvTranscriptTurn] = []
     @Published var isAgentSpeaking: Bool = false
+    private nonisolated(unsafe) var _agentSpeaking = false
+    private nonisolated(unsafe) var _audioGeneration: UInt64 = 0
 
     private nonisolated(unsafe) var webSocketTask: URLSessionWebSocketTask?
     private nonisolated(unsafe) var urlSession: URLSession?        // strong ref — prevents ARC dealloc killing the socket
@@ -101,9 +103,10 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
             webSocketTask?.resume()
         }
 
-        // Handshake confirmed — now exchange the initiation message and start listening.
-        try await sendConversationInitiationClientData()
+        // Start the receive loop first so we never miss the server's metadata response,
+        // then send the initiation message that kicks off the conversation.
         listenForMessages()
+        try await sendConversationInitiationClientData()
 
         state = .connected
 
@@ -142,23 +145,10 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     }
 
     private func sendConversationInitiationClientData() async throws {
-        // ElevenLabs source_info.source is a strict server-side enum:
-        // "twilio"|"python_sdk"|"swift_sdk"|"react_sdk"|"js_sdk"|"web"|"custom"
-        // Sending anything outside that list (e.g. "ios") causes "Invalid message received".
-        let payload: [String: Any] = [
-            "type": "conversation_initiation_client_data",
-            "custom_llm_extra_body": [:] as [String: Any],
-            "conversation_config_override": [:] as [String: Any],
-            "dynamic_variables": [:] as [String: Any],
-            "source_info": [
-                "source": "custom",
-                "version": Self.appVersion,
-            ],
-        ]
-        let data = try JSONSerialization.data(withJSONObject: payload, options: [])
-        guard let json = String(data: data, encoding: .utf8) else {
-            throw URLError(.cannotParseResponse)
-        }
+        // Only the "type" field is required per the ElevenLabs WebSocket API spec.
+        // Sending empty dicts for optional fields (custom_llm_extra_body, etc.)
+        // causes the server to close the connection with 1008 "Invalid message received".
+        let json = "{\"type\":\"conversation_initiation_client_data\"}"
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             webSocketTask?.send(.string(json)) { error in
                 if let error {
@@ -217,15 +207,40 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
             let eid = audioEvent["event_id"]
             let eventId = eid.flatMap { Int("\($0)") } ?? 0
             if eventId <= lastInterruptEventId { return }
-            Task { @MainActor in self.playIncomingAudio(data: raw) }
+            self._agentSpeaking = true
+            self._audioGeneration &+= 1
+            let gen = self._audioGeneration
+            Task { @MainActor in
+                self.isAgentSpeaking = true
+                self.playIncomingAudio(data: raw)
+            }
+            // Auto-unmute mic ~800ms after the last audio chunk.
+            // If another audio chunk arrives before then, gen won't match.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                guard let self, self._audioGeneration == gen else { return }
+                self._agentSpeaking = false
+                Task { @MainActor in self.isAgentSpeaking = false }
+            }
 
         case "agent_response":
             guard let ev = obj["agent_response_event"] as? [String: Any],
                   let text = (ev["agent_response"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty else { return }
+            self._agentSpeaking = true
             Task { @MainActor in
-                self.transcript.append(ConvTranscriptTurn(role: "agent", message: text))
+                self.isAgentSpeaking = true
+                // ElevenLabs sends incremental agent_response events (one per phrase).
+                // Consolidate into a single transcript entry per agent turn.
+                if let lastIdx = self.transcript.indices.last,
+                   self.transcript[lastIdx].role == "agent" {
+                    self.transcript[lastIdx] = ConvTranscriptTurn(
+                        role: "agent",
+                        message: self.transcript[lastIdx].message + " " + text
+                    )
+                } else {
+                    self.transcript.append(ConvTranscriptTurn(role: "agent", message: text))
+                }
             }
 
         case "user_transcript":
@@ -233,7 +248,9 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
                   let text = (ev["user_transcript"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty else { return }
+            self._agentSpeaking = false
             Task { @MainActor in
+                self.isAgentSpeaking = false
                 self.transcript.append(ConvTranscriptTurn(role: "user", message: text))
             }
 
@@ -253,7 +270,9 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
                let n = Int("\(eid)") {
                 lastInterruptEventId = n
             }
+            self._agentSpeaking = false
             Task { @MainActor in
+                self.isAgentSpeaking = false
                 self.playerNode.stop()
                 self.playerNode.play()
             }
@@ -361,6 +380,11 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     }
 
     private nonisolated func processMicInput(buffer: AVAudioPCMBuffer) {
+        // Suppress echo: don't send mic audio while the agent is speaking.
+        // The speaker output bleeds into the mic and ElevenLabs interprets it
+        // as user speech, causing the agent to interrupt itself.
+        if _agentSpeaking { return }
+
         guard let converter = micConverter,
               let outFormat = uplinkPCMFormat,
               let task = webSocketTask else { return }

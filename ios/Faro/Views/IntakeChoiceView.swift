@@ -3,7 +3,6 @@ import SwiftUI
 /// Entry point for the Analyze tab: structured form, voice intake, or quick demo.
 struct IntakeChoiceView: View {
     @EnvironmentObject private var appState: FaroAppState
-    @EnvironmentObject private var authManager: AuthManager
     @State private var isDemoLoading = false
     @State private var demoSessionId: String?
     @State private var demoError: String?
@@ -21,53 +20,6 @@ struct IntakeChoiceView: View {
                         .font(FaroType.subheadline())
                         .foregroundStyle(FaroPalette.ink.opacity(0.55))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                if APIConfig.auth0MissingClientIdOnly {
-                    VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-                        Label("Auth0 not ready", systemImage: "exclamationmark.triangle.fill")
-                            .font(FaroType.headline())
-                            .foregroundStyle(FaroPalette.ink)
-                        Text("Add AUTH0_CLIENT_ID in Info.plist (Auth0 Native app Client ID). Open More for details.")
-                            .font(FaroType.caption())
-                            .foregroundStyle(FaroPalette.ink.opacity(0.55))
-                            .fixedSize(horizontal: false, vertical: true)
-                        Button("Open More") {
-                            appState.openSection("settings")
-                        }
-                        .font(FaroType.subheadline(.semibold))
-                        .tint(FaroPalette.purpleDeep)
-                    }
-                    .padding(FaroSpacing.md)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .faroGlassCard(cornerRadius: FaroRadius.lg)
-                } else if authManager.isAuthConfigured && !authManager.isLoggedIn {
-                    VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-                        Label("Sign in to continue", systemImage: "person.badge.key.fill")
-                            .font(FaroType.headline())
-                            .foregroundStyle(FaroPalette.ink)
-                        Text("Your Faro API expects an Auth0 access token. Sign in below or from More, then run an analysis.")
-                            .font(FaroType.caption())
-                            .foregroundStyle(FaroPalette.ink.opacity(0.55))
-                            .fixedSize(horizontal: false, vertical: true)
-                        HStack(spacing: FaroSpacing.sm) {
-                            Button {
-                                Task { await authManager.login() }
-                            } label: {
-                                Text("Sign in with Auth0")
-                                    .font(FaroType.subheadline(.semibold))
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(FaroPalette.purpleDeep)
-                            Button("More tab") {
-                                appState.openSection("settings")
-                            }
-                            .font(FaroType.subheadline(.medium))
-                        }
-                    }
-                    .padding(FaroSpacing.md)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .faroGlassCard(cornerRadius: FaroRadius.lg)
                 }
 
                 VStack(spacing: FaroSpacing.md) {
@@ -117,6 +69,17 @@ struct IntakeChoiceView: View {
         .navigationTitle("Analyze")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                FaroAuthToolbarTray()
+            }
+        }
+        #else
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                FaroAuthToolbarTray()
+            }
+        }
         #endif
         .navigationDestination(isPresented: Binding(
             get: { demoSessionId != nil },
