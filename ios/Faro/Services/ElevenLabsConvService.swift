@@ -205,7 +205,10 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
             let eid = audioEvent["event_id"]
             let eventId = eid.flatMap { Int("\($0)") } ?? 0
             if eventId <= lastInterruptEventId { return }
-            Task { @MainActor in self.playIncomingAudio(data: raw) }
+            Task { @MainActor in
+                self.isAgentSpeaking = true
+                self.playIncomingAudio(data: raw)
+            }
 
         case "agent_response":
             guard let ev = obj["agent_response_event"] as? [String: Any],
@@ -213,7 +216,18 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
                     .trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty else { return }
             Task { @MainActor in
-                self.transcript.append(ConvTranscriptTurn(role: "agent", message: text))
+                self.isAgentSpeaking = true
+                // ElevenLabs sends incremental agent_response events (one per phrase).
+                // Consolidate into a single transcript entry per agent turn.
+                if let lastIdx = self.transcript.indices.last,
+                   self.transcript[lastIdx].role == "agent" {
+                    self.transcript[lastIdx] = ConvTranscriptTurn(
+                        role: "agent",
+                        message: self.transcript[lastIdx].message + " " + text
+                    )
+                } else {
+                    self.transcript.append(ConvTranscriptTurn(role: "agent", message: text))
+                }
             }
 
         case "user_transcript":
@@ -222,6 +236,7 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
                     .trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty else { return }
             Task { @MainActor in
+                self.isAgentSpeaking = false
                 self.transcript.append(ConvTranscriptTurn(role: "user", message: text))
             }
 
@@ -242,6 +257,7 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
                 lastInterruptEventId = n
             }
             Task { @MainActor in
+                self.isAgentSpeaking = false
                 self.playerNode.stop()
                 self.playerNode.play()
             }
@@ -349,6 +365,11 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     }
 
     private nonisolated func processMicInput(buffer: AVAudioPCMBuffer) {
+        // Suppress echo: don't send mic audio while the agent is speaking.
+        // The speaker output bleeds into the mic and ElevenLabs interprets it
+        // as user speech, causing the agent to interrupt itself.
+        if isAgentSpeaking { return }
+
         guard let converter = micConverter,
               let outFormat = uplinkPCMFormat,
               let task = webSocketTask else { return }
