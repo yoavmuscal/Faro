@@ -21,6 +21,7 @@ enum FaroRadius {
     static let md: CGFloat = 14
     static let lg: CGFloat = 22
     static let xl: CGFloat = 32
+    static let pill: CGFloat = 999
 }
 
 enum FaroSpacing {

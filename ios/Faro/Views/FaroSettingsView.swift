@@ -1,19 +1,29 @@
 import SwiftUI
+import PhotosUI
 
 struct FaroSettingsView: View {
     @EnvironmentObject private var appState: FaroAppState
     @EnvironmentObject private var authManager: AuthManager
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isLoadingPhoto = false
+
+    private var isIPad: Bool { hSizeClass == .regular }
 
     var body: some View {
         ScrollView {
             VStack(spacing: FaroSpacing.lg) {
+                profileHero
+                    .padding(.horizontal, FaroSpacing.md)
+
+                getStartedCard
+                    .padding(.horizontal, FaroSpacing.md)
+
                 if APIConfig.shouldShowAuth0InUI {
-                    FaroAuthCard()
+                    auth0Card
                         .padding(.horizontal, FaroSpacing.md)
                 }
-
-                profileCard
-                    .padding(.horizontal, FaroSpacing.md)
 
                 analysisCard
                     .padding(.horizontal, FaroSpacing.md)
@@ -30,53 +40,306 @@ struct FaroSettingsView: View {
                 Spacer(minLength: 40)
             }
             .padding(.top, FaroSpacing.md)
+            .frame(maxWidth: isIPad ? 620 : .infinity)
+            .frame(maxWidth: .infinity)
         }
         .faroCanvasBackground()
-        .navigationTitle("More")
+        .navigationTitle("Profile")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .onChange(of: selectedPhoto) { _, newItem in
+            Task { await loadProfilePhoto(from: newItem) }
+        }
     }
 
-    // MARK: - Profile
+    // MARK: - Profile Hero
 
-    private var profileCard: some View {
-        HStack(spacing: FaroSpacing.md) {
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [FaroPalette.purpleDeep, FaroPalette.purple],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 56, height: 56)
+    private var profileHero: some View {
+        VStack(spacing: FaroSpacing.md) {
+            // Avatar with photo picker
+            PhotosPicker(
+                selection: $selectedPhoto,
+                matching: .images,
+                photoLibrary: .shared()
+            ) {
+                ZStack(alignment: .bottomTrailing) {
+                    avatarCircle
+                        .frame(width: 96, height: 96)
 
-                Text(initials)
-                    .font(FaroType.title2(.bold))
-                    .foregroundStyle(.white)
+                    ZStack {
+                        Circle()
+                            .fill(FaroPalette.purpleDeep)
+                            .frame(width: 30, height: 30)
+                        Image(systemName: isLoadingPhoto ? "arrow.2.circlepath" : "camera.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .shadow(color: FaroPalette.purpleDeep.opacity(0.4), radius: 6, y: 2)
+                }
             }
+            .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Hi, \(appState.userDisplayName)!")
-                    .font(FaroType.headline())
+            VStack(spacing: 4) {
+                Text("\(appState.userFirstName) \(appState.userLastName)")
+                    .font(FaroType.title3())
                     .foregroundStyle(FaroPalette.ink)
 
                 if !appState.userEmail.isEmpty {
                     Text(appState.userEmail)
-                        .font(FaroType.caption())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.55))
-                } else {
-                    Text("\(appState.userFirstName) \(appState.userLastName)")
-                        .font(FaroType.caption())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                        .font(FaroType.subheadline())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.5))
                 }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, FaroSpacing.lg)
+        .faroGlassCard(cornerRadius: FaroRadius.xl)
+    }
+
+    @ViewBuilder
+    private var avatarCircle: some View {
+        if let data = appState.userProfilePhotoData,
+           let uiImage = UIImage(data: data) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .scaledToFill()
+                .clipShape(Circle())
+                .overlay { Circle().strokeBorder(.white.opacity(0.3), lineWidth: 2) }
+        } else {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [FaroPalette.purpleDeep, FaroPalette.purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay {
+                    Text(initials)
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+                .overlay { Circle().strokeBorder(.white.opacity(0.2), lineWidth: 2) }
+        }
+    }
+
+    // MARK: - Get Started (Intake Options)
+
+    private var getStartedCard: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            SectionHeader(title: "Get Started", icon: "sparkles", tint: FaroPalette.purpleDeep)
+
+            if APIConfig.auth0MissingClientIdOnly {
+                authWarningBanner
+            } else if authManager.isAuthConfigured && !authManager.isLoggedIn {
+                authSignInPrompt
+            }
+
+            VStack(spacing: FaroSpacing.sm) {
+                NavigationLink { OnboardingView() } label: {
+                    intakeRow(
+                        title: "Guided Questionnaire",
+                        subtitle: "Step-by-step form — type at your own pace.",
+                        icon: "list.bullet.rectangle",
+                        iconColor: FaroPalette.purpleDeep
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Divider().opacity(0.4)
+
+                NavigationLink { VoiceIntakeView() } label: {
+                    intakeRow(
+                        title: "Conversational Intake",
+                        subtitle: "Talk through the details with your AI agent.",
+                        icon: "waveform",
+                        iconColor: FaroPalette.info
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Divider().opacity(0.4)
+
+                NavigationLink { OnboardingView(isDemo: true) } label: {
+                    intakeDemoRow
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(FaroSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faroGlassCard(cornerRadius: FaroRadius.xl)
+    }
+
+    private func intakeRow(title: String, subtitle: String, icon: String, iconColor: Color) -> some View {
+        HStack(spacing: FaroSpacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: FaroRadius.sm, style: .continuous)
+                    .fill(iconColor.opacity(0.12))
+                    .frame(width: 38, height: 38)
+                Image(systemName: icon)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(iconColor)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(FaroType.subheadline(.semibold))
+                    .foregroundStyle(FaroPalette.ink)
+                Text(subtitle)
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.25))
+        }
+        .padding(.vertical, FaroSpacing.xs)
+    }
+
+    private var intakeDemoRow: some View {
+        HStack(spacing: FaroSpacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: FaroRadius.sm, style: .continuous)
+                    .fill(FaroPalette.purple.opacity(0.12))
+                    .frame(width: 38, height: 38)
+                Image(systemName: "play.circle.fill")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(FaroPalette.purple)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("Quick Demo")
+                        .font(FaroType.subheadline(.semibold))
+                        .foregroundStyle(FaroPalette.ink)
+                    Text("PRE-FILLED")
+                        .font(FaroType.caption2(.bold))
+                        .foregroundStyle(FaroPalette.purpleDeep)
+                        .faroPillTag(color: FaroPalette.purpleDeep, intensity: 0.1)
+                }
+                Text("See a full analysis using sample daycare data.")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.25))
+        }
+        .padding(.vertical, FaroSpacing.xs)
+    }
+
+    // MARK: - Auth warnings inside Get Started
+
+    private var authWarningBanner: some View {
+        HStack(spacing: FaroSpacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(FaroPalette.warning)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Auth0 not configured")
+                    .font(FaroType.caption(.semibold))
+                    .foregroundStyle(FaroPalette.ink)
+                Text("Add AUTH0_CLIENT_ID in Info.plist to enable API access.")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(FaroSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                .fill(FaroPalette.warning.opacity(0.08))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                .strokeBorder(FaroPalette.warning.opacity(0.3), lineWidth: 0.5)
+        }
+    }
+
+    private var authSignInPrompt: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+            Text("Sign in with Auth0 so your analysis requests reach the Faro API.")
+                .font(FaroType.caption())
+                .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                Task { await authManager.login() }
+            } label: {
+                Label("Sign in with Auth0", systemImage: "person.badge.key.fill")
+                    .font(FaroType.headline())
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+            }
+            .buttonStyle(.faroGradient)
+
+            if let err = authManager.lastError, !err.isEmpty {
+                Text(err)
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.danger)
+            }
+        }
+    }
+
+    // MARK: - Auth0
+
+    private var auth0Card: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+            SectionHeader(title: "Auth0", icon: "person.badge.key.fill", tint: FaroPalette.purpleDeep)
+
+            if APIConfig.auth0MissingClientIdOnly {
+                Text("AUTH0_CLIENT_ID in Info.plist is empty. Add your Auth0 Native app Client ID or sign-in cannot start.")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Auth0 → Applications → your app: copy Client ID. Allowed Callback and Logout URLs must include the redirect for this bundle, e.g. com.faro.Faro.auth0://\(APIConfig.auth0Domain ?? "YOUR_DOMAIN")/ios/com.faro.Faro/callback")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if authManager.isLoggedIn {
+                HStack(spacing: FaroSpacing.sm) {
+                    Label("Signed in", systemImage: "checkmark.seal.fill")
+                        .foregroundStyle(FaroPalette.success)
+                    Spacer()
+                    Button("Sign out") {
+                        Task { await authManager.logout() }
+                    }
+                    .font(FaroType.subheadline(.medium))
+                    .foregroundStyle(FaroPalette.danger)
+                }
+            } else {
+                Button {
+                    Task { await authManager.login() }
+                } label: {
+                    Label("Sign in with Auth0", systemImage: "person.badge.key.fill")
+                        .font(FaroType.headline())
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                }
+                .buttonStyle(.faroGradient)
+
+                Text("Required when the API enforces Auth0 (same AUTH0_DOMAIN and AUTH0_AUDIENCE as backend .env).")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+            }
+
+            if let err = authManager.lastError, !err.isEmpty {
+                Text(err)
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.danger)
+            }
         }
         .padding(FaroSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .faroGlassCard(cornerRadius: FaroRadius.xl)
     }
 
@@ -84,7 +347,7 @@ struct FaroSettingsView: View {
 
     private var analysisCard: some View {
         VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-            SectionHeader(title: "Your Analysis", icon: "sparkles", tint: FaroPalette.purpleDeep)
+            SectionHeader(title: "Current Analysis", icon: "chart.bar.xaxis", tint: FaroPalette.purpleDeep)
 
             if appState.sessionId != nil {
                 labeledRow("Business", value: appState.businessName.isEmpty ? "—" : appState.businessName)
@@ -101,17 +364,21 @@ struct FaroSettingsView: View {
                     HStack(spacing: 6) {
                         Circle()
                             .fill(appState.hasResults ? FaroPalette.success : FaroPalette.warning)
-                            .frame(width: 8, height: 8)
+                            .frame(width: 7, height: 7)
                         Text(appState.hasResults ? "Complete" : "In Progress")
-                            .font(FaroType.subheadline(.medium))
-                            .foregroundStyle(FaroPalette.ink.opacity(0.75))
+                            .font(FaroType.caption(.semibold))
+                            .foregroundStyle(appState.hasResults ? FaroPalette.success : FaroPalette.warning)
                     }
+                    .faroPillTag(
+                        color: appState.hasResults ? FaroPalette.success : FaroPalette.warning,
+                        intensity: 0.1
+                    )
                 }
             } else {
                 HStack(spacing: FaroSpacing.sm) {
                     Image(systemName: "sparkles")
                         .foregroundStyle(FaroPalette.purpleDeep.opacity(0.7))
-                    Text("No analysis yet — head to Analyze to get started.")
+                    Text("No analysis yet — start one from Get Started above.")
                         .font(FaroType.subheadline())
                         .foregroundStyle(FaroPalette.ink.opacity(0.55))
                         .fixedSize(horizontal: false, vertical: true)
@@ -130,7 +397,7 @@ struct FaroSettingsView: View {
                 .foregroundStyle(FaroPalette.ink.opacity(0.45))
             Spacer(minLength: FaroSpacing.sm)
             Text(value)
-                .font(FaroType.subheadline(.medium))
+                .font(FaroType.caption(.semibold))
                 .foregroundStyle(FaroPalette.ink.opacity(0.8))
                 .multilineTextAlignment(.trailing)
         }
@@ -140,15 +407,31 @@ struct FaroSettingsView: View {
 
     private var aboutCard: some View {
         HStack(spacing: FaroSpacing.md) {
+            // App icon or fallback
             ZStack {
-                RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
-                    .fill(FaroPalette.purpleDeep.gradient)
-                    .frame(width: 44, height: 44)
-                Image(systemName: "shield.checkered")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.white)
+                if let uiIcon = UIImage(named: "AppIcon") {
+                    Image(uiImage: uiIcon)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 50, height: 50)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(FaroPalette.glassStroke.opacity(0.4), lineWidth: 0.5)
+                        }
+                } else {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(FaroPalette.purpleDeep.gradient)
+                        .frame(width: 50, height: 50)
+                        .overlay {
+                            Image(systemName: "shield.checkered")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(.white)
+                        }
+                }
             }
-            VStack(alignment: .leading, spacing: 2) {
+
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Faro")
                     .font(FaroType.headline())
                     .foregroundStyle(FaroPalette.ink)
@@ -156,10 +439,13 @@ struct FaroSettingsView: View {
                     .font(FaroType.caption())
                     .foregroundStyle(FaroPalette.ink.opacity(0.5))
             }
+
             Spacer()
+
             Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
-                .font(FaroType.caption())
-                .foregroundStyle(FaroPalette.ink.opacity(0.4))
+                .font(FaroType.caption(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.35))
+                .faroPillTag(color: FaroPalette.ink, intensity: 0.05)
         }
         .padding(FaroSpacing.md)
         .faroGlassCard(cornerRadius: FaroRadius.xl)
@@ -180,7 +466,7 @@ struct FaroSettingsView: View {
         .faroGlassCard(cornerRadius: FaroRadius.xl)
     }
 
-    // MARK: - Sign out
+    // MARK: - Sign Out
 
     private var signOutButton: some View {
         Button(role: .destructive) {
@@ -189,28 +475,52 @@ struct FaroSettingsView: View {
                 appState.signOut()
             }
         } label: {
-            Text("Sign Out")
-                .font(FaroType.headline())
-                .foregroundStyle(FaroPalette.danger)
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(
-                    RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
-                        .fill(FaroPalette.surface)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
-                        .strokeBorder(FaroPalette.danger.opacity(0.35), lineWidth: 1)
-                )
+            HStack(spacing: 8) {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .font(.body.weight(.medium))
+                Text("Sign Out")
+                    .font(FaroType.headline())
+            }
+            .foregroundStyle(FaroPalette.danger)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(FaroPalette.danger.opacity(0.07))
+            }
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(FaroPalette.danger.opacity(0.3), lineWidth: 0.5)
+            }
         }
         .buttonStyle(.plain)
     }
+
+    // MARK: - Helpers
 
     private var initials: String {
         let first = appState.userFirstName.prefix(1).uppercased()
         let last = appState.userLastName.prefix(1).uppercased()
         if first.isEmpty && last.isEmpty { return "?" }
         return "\(first)\(last)"
+    }
+
+    private func loadProfilePhoto(from item: PhotosPickerItem?) async {
+        guard let item else { return }
+        isLoadingPhoto = true
+        defer { isLoadingPhoto = false }
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        #if os(iOS)
+        guard let uiImage = UIImage(data: data) else { return }
+        let targetSize = CGSize(width: 300, height: 300)
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let resized = renderer.image { _ in
+            uiImage.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        if let compressed = resized.jpegData(compressionQuality: 0.82) {
+            appState.userProfilePhotoData = compressed
+        }
+        #endif
     }
 }
 

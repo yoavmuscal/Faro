@@ -1,39 +1,38 @@
 import SwiftUI
 
 enum FaroSection: String, CaseIterable, Identifiable, Hashable {
-    case analyze
+    case home
     case coverage
     case riskProfile
     case submission
-    case settings
+    case profile
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .analyze: return "Analyze"
-        case .coverage: return "Coverage"
+        case .home:       return "Home"
+        case .coverage:   return "Coverage"
         case .riskProfile: return "Risk Profile"
         case .submission: return "Submission"
-        case .settings: return "More"
+        case .profile:    return "Profile"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .analyze: return "sparkles"
-        case .coverage: return "shield.checkered"
+        case .home:       return "house.fill"
+        case .coverage:   return "shield.checkered"
         case .riskProfile: return "exclamationmark.triangle.fill"
         case .submission: return "doc.text.fill"
-        case .settings: return "ellipsis"
+        case .profile:    return "person.crop.circle.fill"
         }
     }
-
 }
 
 struct FaroRootView: View {
     @EnvironmentObject private var appState: FaroAppState
-    @State private var section: FaroSection = .analyze
+    @State private var section: FaroSection = .home
 
     var body: some View {
         Group {
@@ -60,10 +59,10 @@ struct FaroRootView: View {
     private var mainContent: some View {
         TabView(selection: $section) {
             NavigationStack {
-                IntakeChoiceView()
+                HomeView(selectedSection: $section)
             }
-            .tabItem { Label(FaroSection.analyze.title, systemImage: FaroSection.analyze.systemImage) }
-            .tag(FaroSection.analyze)
+            .tabItem { Label(FaroSection.home.title, systemImage: FaroSection.home.systemImage) }
+            .tag(FaroSection.home)
 
             NavigationStack {
                 coverageRoot
@@ -86,8 +85,8 @@ struct FaroRootView: View {
             NavigationStack {
                 FaroSettingsView()
             }
-            .tabItem { Label(FaroSection.settings.title, systemImage: FaroSection.settings.systemImage) }
-            .tag(FaroSection.settings)
+            .tabItem { Label(FaroSection.profile.title, systemImage: FaroSection.profile.systemImage) }
+            .tag(FaroSection.profile)
         }
         .tint(FaroPalette.purpleDeep)
     }
@@ -101,9 +100,9 @@ struct FaroRootView: View {
         } else {
             AnalysisPlaceholderView(
                 title: "No coverage analysis yet",
-                message: "Run an analysis from the Analyze tab to see your coverage recommendations, charts, and premium estimates.",
+                message: "Run an analysis from the Home tab to see your coverage recommendations, charts, and premium estimates.",
                 icon: "shield.lefthalf.filled"
-            ) { section = .analyze }
+            ) { section = .home }
         }
     }
 
@@ -116,7 +115,7 @@ struct FaroRootView: View {
                 title: "No risk profile yet",
                 message: "After analyzing your business, the AI risk assessment with exposures, state requirements, and risk level will appear here.",
                 icon: "exclamationmark.triangle"
-            ) { section = .analyze }
+            ) { section = .home }
         }
     }
 
@@ -129,15 +128,21 @@ struct FaroRootView: View {
                 title: "No submission packet yet",
                 message: "The carrier-ready submission document will be generated after your analysis completes.",
                 icon: "doc.text"
-            ) { section = .analyze }
+            ) { section = .home }
         }
     }
-
 }
 
 private extension FaroRootView {
     func syncSectionFromAppState(_ rawValue: String) {
-        guard let target = FaroSection(rawValue: rawValue), target != section else { return }
+        // Migrate legacy raw values (analyze → home, settings → profile)
+        let mapped: String
+        switch rawValue {
+        case "analyze": mapped = "home"
+        case "settings": mapped = "profile"
+        default: mapped = rawValue
+        }
+        guard let target = FaroSection(rawValue: mapped), target != section else { return }
         section = target
     }
 }
@@ -162,19 +167,11 @@ struct WelcomeView: View {
         !lastName.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    private var welcomePrimaryButtonTitle: String {
-        if authManager.isLoggingIn && APIConfig.isAuth0Configured {
-            return "Signing in…"
-        }
-        return "Get Started"
-    }
-
     var body: some View {
-        NavigationStack {
-            ZStack {
-                backdrop
+        ZStack {
+            backdrop
 
-                VStack(spacing: 0) {
+            VStack(spacing: 0) {
                 Spacer()
 
                 VStack(spacing: FaroSpacing.lg) {
@@ -190,9 +187,17 @@ struct WelcomeView: View {
                             .frame(width: 88, height: 88)
                             .shadow(color: FaroPalette.purpleDeep.opacity(0.4), radius: 24, y: 8)
 
-                        Image(systemName: "shield.checkered")
-                            .font(.system(size: 38, weight: .medium))
-                            .foregroundStyle(.white)
+                        if let uiIcon = UIImage(named: "AppIcon") {
+                            Image(uiImage: uiIcon)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 60, height: 60)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        } else {
+                            Image(systemName: "shield.checkered")
+                                .font(.system(size: 38, weight: .medium))
+                                .foregroundStyle(.white)
+                        }
                     }
                     .scaleEffect(appeared ? 1.0 : 0.5)
                     .opacity(appeared ? 1 : 0)
@@ -235,89 +240,73 @@ struct WelcomeView: View {
 
                 Button(action: signIn) {
                     HStack(spacing: 8) {
-                        if authManager.isLoggingIn && APIConfig.isAuth0Configured {
-                            ProgressView()
-                                .tint(.white)
-                        }
-                        Text(welcomePrimaryButtonTitle)
+                        Text("Get Started")
                             .font(FaroType.headline())
-                        if !(authManager.isLoggingIn && APIConfig.isAuth0Configured) {
-                            Image(systemName: "arrow.right")
-                                .font(.subheadline.weight(.semibold))
-                        }
+                        Image(systemName: "arrow.right")
+                            .font(.subheadline.weight(.semibold))
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
-                    .foregroundStyle(.white)
-                    .background {
-                        RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
-                            .fill(
-                                canContinue
-                                ? AnyShapeStyle(
-                                    LinearGradient(
-                                        colors: [FaroPalette.purpleDeep, FaroPalette.purple],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                : AnyShapeStyle(FaroPalette.ink.opacity(0.08))
-                            )
-                    }
-                    .overlay {
-                        if canContinue {
-                            RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [.white.opacity(0.3), .white.opacity(0.05)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 1
-                                )
-                        }
-                    }
-                    .shadow(color: canContinue ? FaroPalette.purpleDeep.opacity(0.35) : .clear, radius: 16, y: 6)
                 }
-                .disabled(!canContinue || (APIConfig.isAuth0Configured && authManager.isLoggingIn))
+                .buttonStyle(.faroGradient)
+                .disabled(!canContinue)
                 .animation(.easeInOut(duration: 0.25), value: canContinue)
                 .frame(maxWidth: 380)
                 .padding(.bottom, FaroSpacing.lg)
                 .offset(y: appeared ? 0 : 40)
                 .opacity(appeared ? 1 : 0)
 
+                if APIConfig.shouldShowAuth0InUI {
+                    VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                        if APIConfig.auth0MissingClientIdOnly {
+                            Text("Auth0 Client ID is missing. Set AUTH0_CLIENT_ID in Info.plist (see Profile → Auth0).")
+                                .font(FaroType.caption())
+                                .foregroundStyle(FaroPalette.danger)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else if authManager.isLoggedIn {
+                            Label("API sign-in ready", systemImage: "checkmark.seal.fill")
+                                .font(FaroType.subheadline(.medium))
+                                .foregroundStyle(FaroPalette.success)
+                        } else {
+                            Text("This environment uses Auth0 for the Faro API. Sign in so analysis requests succeed.")
+                                .font(FaroType.caption())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button {
+                                Task { await authManager.login() }
+                            } label: {
+                                Label("Sign in with Auth0", systemImage: "person.badge.key.fill")
+                                    .font(FaroType.headline())
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 52)
+                            }
+                            .buttonStyle(.faroGradient)
+                            .tint(FaroPalette.purpleDeep)
+                            if let err = authManager.lastError, !err.isEmpty {
+                                Text(err)
+                                    .font(FaroType.caption())
+                                    .foregroundStyle(FaroPalette.danger)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: 380)
+                    .padding(.bottom, FaroSpacing.xl)
+                    .offset(y: appeared ? 0 : 40)
+                    .opacity(appeared ? 1 : 0)
+                }
             }
             .padding(.horizontal, FaroSpacing.lg)
+        }
+        .faroCanvasBackground()
+        .task {
+            await authManager.refreshLoginState()
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.8, dampingFraction: 0.75)) {
+                appeared = true
             }
-            .faroCanvasBackground()
-            .navigationTitle("")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                #if os(iOS)
-                ToolbarItem(placement: .topBarTrailing) {
-                    FaroAuthToolbarTray()
-                }
-                #else
-                ToolbarItem(placement: .primaryAction) {
-                    FaroAuthToolbarTray()
-                }
-                #endif
-            }
-            .task {
-                await authManager.refreshLoginState()
-            }
-            .onChange(of: authManager.isLoggedIn) { _, loggedIn in
-                guard loggedIn else { return }
-                finishWelcomeAfterAuth0()
-            }
-            .onAppear {
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.75)) {
-                    appeared = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    focusedField = .first
-                }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                focusedField = .first
             }
         }
     }
@@ -339,19 +328,7 @@ struct WelcomeView: View {
             #endif
             .padding(.horizontal, FaroSpacing.md)
             .frame(height: 52)
-            .background {
-                RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
-                    .fill(FaroPalette.surface)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
-                    .strokeBorder(
-                        focusedField == focused
-                        ? FaroPalette.purpleDeep.opacity(0.5)
-                        : FaroPalette.glassStroke,
-                        lineWidth: focusedField == focused ? 1.5 : 1
-                    )
-            }
+            .faroGlassCapsule()
     }
 
     private var backdrop: some View {
@@ -384,37 +361,7 @@ struct WelcomeView: View {
 
     private func signIn() {
         guard canContinue else { return }
-        if !APIConfig.isAuth0Configured {
-            appState.signIn(
-                firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
-                lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
-                email: email.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
-            return
-        }
-        Task {
-            if !authManager.isLoggedIn {
-                await authManager.login()
-            }
-            await MainActor.run {
-                finishWelcomeAfterAuth0()
-            }
-        }
-    }
-
-    /// Enter the app once Auth0 is ready (toolbar **Log in** or **Get Started**). Safe to call more than once.
-    private func finishWelcomeAfterAuth0() {
-        guard authManager.isLoggedIn, !appState.isSignedIn else { return }
-        if canContinue {
-            appState.signIn(
-                firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
-                lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
-                email: email.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
-        } else {
-            let p = authManager.welcomeProfileFromSession()
-            appState.signIn(firstName: p.firstName, lastName: p.lastName, email: p.email)
-        }
+        appState.signIn(firstName: firstName, lastName: lastName, email: email)
     }
 }
 
@@ -433,7 +380,7 @@ struct AnalysisPlaceholderView: View {
             Text(message)
                 .multilineTextAlignment(.center)
         } actions: {
-            Button("Go to Analyze", action: action)
+            Button("Go to Home", action: action)
                 .buttonStyle(.borderedProminent)
                 .tint(FaroPalette.purpleDeep)
         }
