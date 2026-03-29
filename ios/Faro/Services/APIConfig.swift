@@ -53,6 +53,13 @@ enum APIConfig {
         isAuth0Configured || auth0MissingClientIdOnly
     }
 
+    /// Shown in-app as a hint; must match Allowed Callback / Logout URLs in Auth0 for this Native app.
+    static var auth0CallbackURLHint: String? {
+        guard let bundleId = Bundle.main.bundleIdentifier,
+              let host = auth0Domain else { return nil }
+        return "\(bundleId).auth0://\(host)/ios/\(bundleId)/callback"
+    }
+
     private static func string(forInfoKey key: String) -> String? {
         guard let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)

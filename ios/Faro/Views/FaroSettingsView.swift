@@ -8,7 +8,7 @@ struct FaroSettingsView: View {
         ScrollView {
             VStack(spacing: FaroSpacing.lg) {
                 if APIConfig.shouldShowAuth0InUI {
-                    auth0Card
+                    FaroAuthCard()
                         .padding(.horizontal, FaroSpacing.md)
                 }
 
@@ -36,53 +36,6 @@ struct FaroSettingsView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-    }
-
-    // MARK: - Auth0
-
-    private var auth0Card: some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-            SectionHeader(title: "Auth0", icon: "person.badge.key.fill", tint: FaroPalette.purpleDeep)
-
-            if APIConfig.auth0MissingClientIdOnly {
-                Text("AUTH0_CLIENT_ID in Info.plist is empty. Add your Auth0 Native app Client ID or sign-in cannot start.")
-                    .font(FaroType.caption())
-                    .foregroundStyle(FaroPalette.danger)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Auth0 → Applications → your app: copy Client ID. Allowed Callback and Logout URLs must include the redirect for this bundle, e.g. com.faro.Faro.auth0://\(APIConfig.auth0Domain ?? "YOUR_DOMAIN")/ios/com.faro.Faro/callback")
-                    .font(FaroType.caption())
-                    .foregroundStyle(FaroPalette.ink.opacity(0.55))
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if authManager.isLoggedIn {
-                Label("Signed in", systemImage: "checkmark.seal.fill")
-                    .foregroundStyle(FaroPalette.success)
-                Button("Sign out of Auth0") {
-                    Task { await authManager.logout() }
-                }
-                .font(FaroType.subheadline(.medium))
-            } else {
-                Button {
-                    Task { await authManager.login() }
-                } label: {
-                    Label("Sign in with Auth0", systemImage: "person.badge.key.fill")
-                        .font(FaroType.headline())
-                }
-                .tint(FaroPalette.purpleDeep)
-
-                Text("Required when the API enforces Auth0 (same AUTH0_DOMAIN and AUTH0_AUDIENCE as backend .env).")
-                    .font(FaroType.caption())
-                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
-            }
-
-            if let err = authManager.lastError, !err.isEmpty {
-                Text(err)
-                    .font(FaroType.caption())
-                    .foregroundStyle(FaroPalette.danger)
-            }
-        }
-        .padding(FaroSpacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
     }
 
     // MARK: - Profile

@@ -221,11 +221,19 @@ struct WelcomeView: View {
         !lastName.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    var body: some View {
-        ZStack {
-            backdrop
+    private var welcomePrimaryButtonTitle: String {
+        if authManager.isLoggingIn && APIConfig.isAuth0Configured {
+            return "Signing in…"
+        }
+        return "Get Started"
+    }
 
-            VStack(spacing: 0) {
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                backdrop
+
+                VStack(spacing: 0) {
                 Spacer()
 
                 VStack(spacing: FaroSpacing.lg) {
@@ -286,10 +294,16 @@ struct WelcomeView: View {
 
                 Button(action: signIn) {
                     HStack(spacing: 8) {
-                        Text("Get Started")
+                        if authManager.isLoggingIn && APIConfig.isAuth0Configured {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                        Text(welcomePrimaryButtonTitle)
                             .font(FaroType.headline())
-                        Image(systemName: "arrow.right")
-                            .font(.subheadline.weight(.semibold))
+                        if !(authManager.isLoggingIn && APIConfig.isAuth0Configured) {
+                            Image(systemName: "arrow.right")
+                                .font(.subheadline.weight(.semibold))
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
@@ -323,64 +337,46 @@ struct WelcomeView: View {
                     }
                     .shadow(color: canContinue ? FaroPalette.purpleDeep.opacity(0.35) : .clear, radius: 16, y: 6)
                 }
-                .disabled(!canContinue)
+                .disabled(!canContinue || (APIConfig.isAuth0Configured && authManager.isLoggingIn))
                 .animation(.easeInOut(duration: 0.25), value: canContinue)
                 .frame(maxWidth: 380)
                 .padding(.bottom, FaroSpacing.lg)
                 .offset(y: appeared ? 0 : 40)
                 .opacity(appeared ? 1 : 0)
 
-                if APIConfig.shouldShowAuth0InUI {
-                    VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-                        if APIConfig.auth0MissingClientIdOnly {
-                            Text("Auth0 Client ID is missing. Set AUTH0_CLIENT_ID in Info.plist (see More → Auth0).")
-                                .font(FaroType.caption())
-                                .foregroundStyle(FaroPalette.danger)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } else if authManager.isLoggedIn {
-                            Label("API sign-in ready", systemImage: "checkmark.seal.fill")
-                                .font(FaroType.subheadline(.medium))
-                                .foregroundStyle(FaroPalette.success)
-                        } else {
-                            Text("This environment uses Auth0 for the Faro API. Sign in so analysis requests succeed.")
-                                .font(FaroType.caption())
-                                .foregroundStyle(FaroPalette.ink.opacity(0.55))
-                                .fixedSize(horizontal: false, vertical: true)
-                            Button {
-                                Task { await authManager.login() }
-                            } label: {
-                                Label("Sign in with Auth0", systemImage: "person.badge.key.fill")
-                                    .font(FaroType.headline())
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 52)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(FaroPalette.purpleDeep)
-                            if let err = authManager.lastError, !err.isEmpty {
-                                Text(err)
-                                    .font(FaroType.caption())
-                                    .foregroundStyle(FaroPalette.danger)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: 380)
-                    .padding(.bottom, FaroSpacing.xl)
-                    .offset(y: appeared ? 0 : 40)
-                    .opacity(appeared ? 1 : 0)
-                }
             }
             .padding(.horizontal, FaroSpacing.lg)
-        }
-        .faroCanvasBackground()
-        .task {
-            await authManager.refreshLoginState()
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.8, dampingFraction: 0.75)) {
-                appeared = true
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                focusedField = .first
+            .faroCanvasBackground()
+            .navigationTitle("")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                #if os(iOS)
+                ToolbarItem(placement: .topBarTrailing) {
+                    FaroAuthToolbarTray()
+                }
+                #else
+                ToolbarItem(placement: .primaryAction) {
+                    FaroAuthToolbarTray()
+                }
+                #endif
+            }
+            .task {
+                await authManager.refreshLoginState()
+            }
+            .onChange(of: authManager.isLoggedIn) { _, loggedIn in
+                guard loggedIn else { return }
+                finishWelcomeAfterAuth0()
+            }
+            .onAppear {
+                withAnimation(.spring(response: 0.8, dampingFraction: 0.75)) {
+                    appeared = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    focusedField = .first
+                }
             }
         }
     }
@@ -447,7 +443,37 @@ struct WelcomeView: View {
 
     private func signIn() {
         guard canContinue else { return }
-        appState.signIn(firstName: firstName, lastName: lastName, email: email)
+        if !APIConfig.isAuth0Configured {
+            appState.signIn(
+                firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            return
+        }
+        Task {
+            if !authManager.isLoggedIn {
+                await authManager.login()
+            }
+            await MainActor.run {
+                finishWelcomeAfterAuth0()
+            }
+        }
+    }
+
+    /// Enter the app once Auth0 is ready (toolbar **Log in** or **Get Started**). Safe to call more than once.
+    private func finishWelcomeAfterAuth0() {
+        guard authManager.isLoggedIn, !appState.isSignedIn else { return }
+        if canContinue {
+            appState.signIn(
+                firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        } else {
+            let p = authManager.welcomeProfileFromSession()
+            appState.signIn(firstName: p.firstName, lastName: p.lastName, email: p.email)
+        }
     }
 }
 
