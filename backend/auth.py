@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from functools import lru_cache
-from typing import Any
+from typing import Any, List, Optional, Union
 from urllib.parse import urlparse
 
 import jwt
@@ -66,7 +66,7 @@ def verify_auth0_access_token(token: str) -> dict[str, Any]:
     try:
         signing_key = _jwks_client().get_signing_key_from_jwt(token)
         # PyJWT: pass iterable so either `https://id` or `https://id/` matches the `aud` claim.
-        aud_param: str | list[str] = audiences[0] if len(audiences) == 1 else audiences
+        aud_param: Union[str, List[str]] = audiences[0] if len(audiences) == 1 else audiences
         payload = jwt.decode(
             token,
             signing_key.key,
@@ -86,7 +86,7 @@ def verify_auth0_access_token(token: str) -> dict[str, Any]:
 
 
 async def require_auth(
-    creds: HTTPAuthorizationCredentials | None = Depends(security),
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> dict[str, Any]:
     if not auth_enabled():
         return {}
@@ -95,7 +95,7 @@ async def require_auth(
     return verify_auth0_access_token(creds.credentials)
 
 
-def ws_bearer_token(authorization_header: str | None) -> str | None:
+def ws_bearer_token(authorization_header: Optional[str]) -> Optional[str]:
     if not authorization_header:
         return None
     parts = authorization_header.split(" ", 1)

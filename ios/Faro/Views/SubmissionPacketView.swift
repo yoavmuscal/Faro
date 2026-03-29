@@ -21,9 +21,7 @@ struct SubmissionPacketView: View {
                     requestedCoveragesSection(coverages)
                 }
 
-                if let losses = packet.lossHistory, !losses.isEmpty {
-                    lossHistorySection(losses)
-                }
+                lossHistoryCleanSection
 
                 if let notes = packet.underwriterNotes, !notes.isEmpty {
                     underwriterNotesSection(notes)
@@ -145,40 +143,16 @@ struct SubmissionPacketView: View {
         .padding(.horizontal, FaroSpacing.md)
     }
 
-    private func lossHistorySection(_ losses: [SubmissionLoss]) -> some View {
+    private var lossHistoryCleanSection: some View {
         VStack(alignment: .leading, spacing: FaroSpacing.sm) {
             SectionHeader(title: "Loss History", icon: "clock.arrow.trianglehead.counterclockwise.rotate.90", tint: FaroPalette.warning)
 
-            if losses.isEmpty || (losses.count == 1 && losses.first?.type?.lowercased().contains("none") == true) {
-                HStack(spacing: FaroSpacing.xs) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(FaroPalette.success)
-                    Text("No prior losses reported")
-                        .font(FaroType.subheadline())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.7))
-                }
-            } else {
-                ForEach(losses.indices, id: \.self) { i in
-                    let loss = losses[i]
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(loss.type ?? "Loss")
-                                .font(FaroType.subheadline(.semibold))
-                                .foregroundStyle(FaroPalette.ink)
-                            if let desc = loss.description {
-                                Text(desc)
-                                    .font(FaroType.caption())
-                                    .foregroundStyle(FaroPalette.ink.opacity(0.6))
-                            }
-                        }
-                        Spacer()
-                        if let amount = loss.amount {
-                            Text("$\(Int(amount).formatted())")
-                                .font(FaroType.subheadline(.semibold))
-                                .foregroundStyle(FaroPalette.danger)
-                        }
-                    }
-                }
+            HStack(spacing: FaroSpacing.xs) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(FaroPalette.success)
+                Text("No prior losses reported")
+                    .font(FaroType.subheadline())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.7))
             }
         }
         .padding(FaroSpacing.md)
