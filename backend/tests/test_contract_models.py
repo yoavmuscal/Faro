@@ -4,6 +4,8 @@ from models import (
     CoverageCategory,
     IntakeRequest,
     build_results_response,
+    normalize_coverage_requirements_payload,
+    normalize_risk_profile_payload,
     normalize_submission_packet_payload,
     validate_coverage_requirements_payload,
     validate_risk_profile_payload,
@@ -63,6 +65,62 @@ class ContractModelTests(unittest.TestCase):
         self.assertIsNone(requirements[0].trigger_event)
         self.assertEqual(requirements[1].category, CoverageCategory.projected)
         self.assertIsNotNone(requirements[1].trigger_event)
+
+    def test_coverage_guardrails_dedupe_strip_and_repair(self) -> None:
+        requirements = normalize_coverage_requirements_payload(
+            [
+                {
+                    "type": "General Liability",
+                    "category": "recommended",
+                    "rationale": "Base liability coverage.",
+                    "estimated_premium_low": 1200,
+                    "estimated_premium_high": 2400,
+                    "confidence": 0.7,
+                },
+                {
+                    "type": "General Liability",
+                    "category": "required",
+                    "rationale": "Required by the venue contract.",
+                    "estimated_premium_low": 1000,
+                    "estimated_premium_high": 2600,
+                    "confidence": 0.86,
+                },
+                {
+                    "type": "Commercial Auto",
+                    "category": "recommended",
+                    "rationale": "Suggested by the model without evidence.",
+                    "estimated_premium_low": 2000,
+                    "estimated_premium_high": 3200,
+                    "confidence": 0.55,
+                },
+            ],
+            intake=self.intake,
+            risk_profile=self.risk_profile,
+        )
+
+        names = [item.type for item in requirements]
+        self.assertEqual(names.count("General Liability"), 1)
+        self.assertIn("Workers Compensation", names)
+        self.assertNotIn("Commercial Auto", names)
+        general_liability = next(item for item in requirements if item.type == "General Liability")
+        self.assertEqual(general_liability.category, CoverageCategory.required)
+
+    def test_risk_profile_guardrails_reject_thin_payload(self) -> None:
+        with self.assertRaises(ValueError):
+            normalize_risk_profile_payload(
+                {
+                    "industry": "Daycare",
+                    "sic_code": "8351",
+                    "risk_level": "medium",
+                    "primary_exposures": [],
+                    "state_requirements": [],
+                    "employee_implications": [],
+                    "revenue_exposure": "Moderate",
+                    "unusual_risks": [],
+                    "reasoning_summary": "Looks fine.",
+                },
+                intake=self.intake,
+            )
 
     def test_legacy_submission_packet_is_normalized_to_nested_shape(self) -> None:
         requirements = validate_coverage_requirements_payload(
@@ -153,8 +211,12 @@ class ContractModelTests(unittest.TestCase):
             submission_packet_url="",
         )
 
-        self.assertEqual(response.coverage_options[0].description, "Protects stored parent and child data.")
-        self.assertEqual(response.coverage_options[0].category, CoverageCategory.recommended)
+        cyber = next(item for item in response.coverage_options if item.type == "Cyber Liability")
+        self.assertEqual(cyber.description, "Protects stored parent and child data.")
+        self.assertEqual(cyber.category, CoverageCategory.recommended)
+        self.assertTrue(
+            any(item.type == "Workers Compensation" for item in response.coverage_options)
+        )
         self.assertEqual(response.submission_packet.operations.employees.total, 12)
         self.assertEqual(response.voice_summary_url, "/audio/test-session")
 

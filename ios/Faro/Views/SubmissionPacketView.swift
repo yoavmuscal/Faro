@@ -4,37 +4,29 @@ struct SubmissionPacketView: View {
     let packet: SubmissionPacket
     let businessName: String
 
-    @State private var appeared = false
-
     var body: some View {
         ScrollView {
             VStack(spacing: FaroSpacing.lg) {
                 headerSection
-                    .faroStaggerIn(appeared: appeared, delay: 0)
 
                 if let applicant = packet.applicant {
                     applicantSection(applicant)
-                        .faroStaggerIn(appeared: appeared, delay: 0.06)
                 }
 
                 if let ops = packet.operations {
                     operationsSection(ops)
-                        .faroStaggerIn(appeared: appeared, delay: 0.12)
                 }
 
                 if let coverages = packet.requestedCoverages, !coverages.isEmpty {
                     requestedCoveragesSection(coverages)
-                        .faroStaggerIn(appeared: appeared, delay: 0.18)
                 }
 
                 if let losses = packet.lossHistory, !losses.isEmpty {
                     lossHistorySection(losses)
-                        .faroStaggerIn(appeared: appeared, delay: 0.24)
                 }
 
                 if let notes = packet.underwriterNotes, !notes.isEmpty {
                     underwriterNotesSection(notes)
-                        .faroStaggerIn(appeared: appeared, delay: 0.3)
                 }
 
                 Spacer(minLength: 40)
@@ -46,9 +38,6 @@ struct SubmissionPacketView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .onAppear {
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { appeared = true }
-        }
     }
 
     private var headerSection: some View {
@@ -148,7 +137,7 @@ struct SubmissionPacketView: View {
                 }
                 .padding(FaroSpacing.sm + 2)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .faroGlassCard(cornerRadius: FaroRadius.md, material: .ultraThinMaterial)
+                .faroGlassCard(cornerRadius: FaroRadius.md)
             }
         }
         .padding(FaroSpacing.md)

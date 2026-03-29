@@ -8,8 +8,12 @@ import os
 import re
 import httpx
 import database as db
-from models import validate_coverage_requirements_payload, validate_risk_profile_payload
-from ..llm import chat_with_fallback
+from models import (
+    IntakeRequest,
+    normalize_coverage_requirements_payload,
+    normalize_risk_profile_payload,
+)
+from ..llm import GeminiRoutingError, generate_text_with_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +60,44 @@ def _truncate_tts(text: str, max_chars: int) -> str:
     return text[:max_chars].rstrip() + "…"
 
 
+def _join_policy_names(policies: list[str]) -> str:
+    if not policies:
+        return ""
+    if len(policies) == 1:
+        return policies[0]
+    if len(policies) == 2:
+        return f"{policies[0]} and {policies[1]}"
+    return f"{', '.join(policies[:-1])}, and {policies[-1]}"
+
+
+def _build_fallback_summary(intake: IntakeRequest, rows) -> str:
+    required = [item.type for item in rows if item.category.value == "required"]
+    recommended = [item.type for item in rows if item.category.value == "recommended"]
+    projected = [item.type for item in rows if item.category.value == "projected"]
+
+    sentences = [
+        f"For {intake.business_name}, your coverage review is ready."
+    ]
+    if required:
+        sentences.append(
+            f"You should prioritize {_join_policy_names(required[:3])} because these cover the most immediate risks in your business."
+        )
+    if recommended:
+        sentences.append(
+            f"It also makes sense to consider {_join_policy_names(recommended[:3])} to reduce common liability and operational gaps."
+        )
+    if projected:
+        sentences.append(
+            f"As you grow, keep {_join_policy_names(projected[:2])} in mind for future changes in operations or headcount."
+        )
+    if not any((required, recommended, projected)):
+        sentences.append(
+            "We could not confidently map policy types yet, so the safest next step is to rerun the analysis with more business detail."
+        )
+    sentences.append("Review the coverage dashboard for the specific recommendations and next steps.")
+    return " ".join(sentence.strip() for sentence in sentences if sentence.strip())
+
+
 async def synthesize_speech(session_id: str, text: str) -> str:
     key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
     if not key or not text.strip():
@@ -67,7 +109,7 @@ async def synthesize_speech(session_id: str, text: str) -> str:
     mid = os.environ.get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2").strip()
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=20.0) as client:
             r = await client.post(
                 ELEVENLABS_TTS_URL.format(voice_id=vid),
                 headers={"xi-api-key": key, "Accept": "audio/mpeg", "Content-Type": "application/json"},
@@ -90,14 +132,18 @@ async def synthesize_speech(session_id: str, text: str) -> str:
 
 
 async def run(state: dict) -> dict:
-    intake = state["intake"]
+    intake = IntakeRequest.model_validate(state["intake"])
     sid = state["session_id"]
     risk = (
-        validate_risk_profile_payload(state["risk_profile"])
+        normalize_risk_profile_payload(state["risk_profile"], intake=intake)
         if state.get("risk_profile") is not None
         else None
     )
-    rows = validate_coverage_requirements_payload(state.get("coverage_requirements") or [])
+    rows = normalize_coverage_requirements_payload(
+        state.get("coverage_requirements") or [],
+        intake=intake,
+        risk_profile=risk,
+    )
 
     now = [
         c.model_dump(mode="json")
@@ -112,19 +158,48 @@ async def run(state: dict) -> dict:
 
     industry = (
         (risk.industry if risk else None)
-        or (intake.get("description") or "")[:120]
+        or intake.description[:120]
         or "General business"
     ).strip()
     ctx = ((risk.reasoning_summary if risk else None) or "See coverage lists below.").strip()
 
     prompt = USER_PROMPT_TEMPLATE.format(
-        business_name=intake["business_name"],
+        business_name=intake.business_name,
         industry=industry,
         risk_context=ctx,
         coverage_json=json.dumps(now, indent=2) if now else "(none listed)",
         projected_json=json.dumps(later, indent=2) if later else "(none)",
     )
-    summary = _strip_wrappers(await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt))
+    degraded = False
+    try:
+        summary_text, llm_meta = await generate_text_with_fallback(
+            system=SYSTEM_PROMPT,
+            user=prompt,
+        )
+        summary = _strip_wrappers(summary_text)
+    except GeminiRoutingError as exc:
+        degraded = True
+        summary = _build_fallback_summary(intake, rows)
+        llm_meta = {
+            "model_used": None,
+            "fallback_reason": "text_generation_failed",
+            "latency_ms": None,
+            "parse_ok": True,
+            "validation_ok": True,
+            "attempts": exc.attempts,
+            "degraded": True,
+            "error_message": str(exc),
+        }
     voice_url = await synthesize_speech(sid, summary)
+    llm_meta["voice_generated"] = bool(voice_url)
+    llm_meta["degraded"] = degraded or llm_meta.get("degraded", False)
 
-    return {**state, "plain_english_summary": summary, "voice_url": voice_url}
+    analysis_meta = dict(state.get("analysis_meta") or {})
+    analysis_meta["explainer"] = llm_meta
+
+    return {
+        **state,
+        "plain_english_summary": summary,
+        "voice_url": voice_url,
+        "analysis_meta": analysis_meta,
+    }

@@ -3,12 +3,10 @@ ElevenLabs Conversational AI integration.
 Handles agent creation/retrieval and converting transcripts into IntakeRequests.
 """
 import os
-import json
 import logging
-from typing import Optional
 import httpx
-from models import ConvTranscriptTurn
-from .llm import chat_with_fallback, parse_json_response
+from models import ConvTranscriptTurn, IntakeRequest
+from .llm import generate_validated_json_with_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +99,55 @@ async def create_conversation_token(session_id: str) -> str:
         return f"wss://api.elevenlabs.io/v1/convai/conversation?agent_id={agent_id}"
 
 
-async def extract_intake_from_transcript(transcript: list[ConvTranscriptTurn]) -> dict:
-    """Uses Gemini to parse the unstructured conversation into the 5 structured intake fields."""
+def _required_text(payload: dict, field: str) -> str:
+    value = payload.get(field)
+    if value is None or not str(value).strip():
+        raise ValueError(f"Transcript extraction is missing {field.replace('_', ' ')}")
+    return str(value).strip()
 
+
+def _required_int(payload: dict, field: str) -> int:
+    value = payload.get(field)
+    if value is None or str(value).strip() == "":
+        raise ValueError(f"Transcript extraction is missing {field.replace('_', ' ')}")
+    try:
+        return int(str(value).strip().replace(",", ""))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Transcript extraction returned an invalid integer for {field.replace('_', ' ')}"
+        ) from exc
+
+
+def _required_float(payload: dict, field: str) -> float:
+    value = payload.get(field)
+    if value is None or str(value).strip() == "":
+        raise ValueError(f"Transcript extraction is missing {field.replace('_', ' ')}")
+    try:
+        return float(str(value).strip().replace(",", ""))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Transcript extraction returned an invalid number for {field.replace('_', ' ')}"
+        ) from exc
+
+
+def _validate_transcript_intake(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Transcript extraction must return a JSON object")
+
+    intake = IntakeRequest(
+        business_name=_required_text(payload, "business_name"),
+        description=_required_text(payload, "description"),
+        employee_count=_required_int(payload, "employee_count"),
+        state=_required_text(payload, "state"),
+        annual_revenue=_required_float(payload, "annual_revenue"),
+    )
+    return intake.model_dump(mode="json")
+
+
+async def extract_intake_from_transcript(
+    transcript: list[ConvTranscriptTurn],
+) -> tuple[dict, dict]:
+    """Uses Gemini to parse the unstructured conversation into a validated IntakeRequest payload."""
     system_prompt = """You extract structured fields from an insurance intake conversation transcript.
 You must output ONLY raw, strictly valid JSON that matches this schema exactly, with NO markdown code blocks, NO triple backticks, and NO wrapping text:
 {
@@ -120,14 +164,8 @@ If a field wasn't mentioned, guess a reasonable default or leave blank."""
 
     user_prompt = f"Transcript:\n{transcript_text}\n\nExtract the JSON now:"
 
-    raw_response = await chat_with_fallback(system=system_prompt, user=user_prompt)
-    data = parse_json_response(raw_response)
-
-    # Ensure all expected fields exist with basic typing
-    return {
-        "business_name": str(data.get("business_name", "Unknown Business")),
-        "description": str(data.get("description", "Not specified in transcript")),
-        "employee_count": int(data.get("employee_count") or 1),
-        "state": str(data.get("state", "NY")),
-        "annual_revenue": float(data.get("annual_revenue") or 0.0)
-    }
+    return await generate_validated_json_with_fallback(
+        system=system_prompt,
+        user=user_prompt,
+        validator=_validate_transcript_intake,
+    )

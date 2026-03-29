@@ -473,6 +473,217 @@ def validate_coverage_requirements_payload(payload: Any) -> list[CoverageRequire
     return [CoverageRequirement.model_validate(item) for item in payload]
 
 
+def normalize_risk_profile_payload(
+    payload: Any,
+    *,
+    intake: IntakeRequest | None = None,
+) -> RiskProfile:
+    risk_profile = validate_risk_profile_payload(payload)
+    if not _meaningful_string(risk_profile.industry):
+        raise ValueError("risk profile industry is missing or placeholder-like")
+    if not _meaningful_string(risk_profile.sic_code):
+        raise ValueError("risk profile SIC code is missing or placeholder-like")
+    if not _meaningful_string(risk_profile.reasoning_summary) or len(
+        risk_profile.reasoning_summary.split()
+    ) < 6:
+        raise ValueError("risk profile reasoning summary is too thin")
+    if not risk_profile.primary_exposures:
+        raise ValueError("risk profile must include at least one primary exposure")
+    if intake and intake.employee_count > 0 and not (
+        risk_profile.employee_implications or risk_profile.state_requirements
+    ):
+        raise ValueError(
+            "risk profile is missing employee or state requirement implications"
+        )
+    return risk_profile
+
+
+_CATEGORY_PRECEDENCE = {
+    CoverageCategory.projected: 0,
+    CoverageCategory.recommended: 1,
+    CoverageCategory.required: 2,
+}
+
+
+def _coverage_key(name: str) -> str:
+    return " ".join(name.casefold().replace("&", "and").split())
+
+
+def _choose_coverage_category(
+    left: CoverageCategory,
+    right: CoverageCategory,
+) -> CoverageCategory:
+    return left if _CATEGORY_PRECEDENCE[left] >= _CATEGORY_PRECEDENCE[right] else right
+
+
+def _coverage_mentions(text: str, *terms: str) -> bool:
+    lower_text = text.casefold()
+    return any(term in lower_text for term in terms)
+
+
+def _coverage_evidence_text(
+    intake: IntakeRequest,
+    risk_profile: RiskProfile | None,
+) -> str:
+    pieces = [intake.business_name, intake.description, intake.state]
+    if risk_profile:
+        pieces.extend(
+            [
+                risk_profile.industry,
+                risk_profile.reasoning_summary,
+                risk_profile.revenue_exposure,
+                *risk_profile.primary_exposures,
+                *risk_profile.state_requirements,
+                *risk_profile.employee_implications,
+                *risk_profile.unusual_risks,
+            ]
+        )
+    return " ".join(piece for piece in pieces if piece)
+
+
+def _has_supported_coverage_evidence(
+    requirement_type: str,
+    *,
+    intake: IntakeRequest,
+    risk_profile: RiskProfile | None,
+) -> bool:
+    evidence = _coverage_evidence_text(intake, risk_profile)
+    normalized_type = _coverage_key(requirement_type)
+    if "liquor liability" in normalized_type:
+        return _coverage_mentions(
+            evidence,
+            "liquor",
+            "alcohol",
+            "beer",
+            "wine",
+            "bar",
+            "nightclub",
+            "tavern",
+            "cocktail",
+        )
+    if "commercial auto" in normalized_type:
+        return _coverage_mentions(
+            evidence,
+            "vehicle",
+            "fleet",
+            "delivery",
+            "driver",
+            "truck",
+            "van",
+            "auto",
+            "transport",
+        )
+    if "product liability" in normalized_type:
+        return _coverage_mentions(
+            evidence,
+            "product",
+            "manufactur",
+            "retail",
+            "e-commerce",
+            "ecommerce",
+            "inventory",
+            "consumer goods",
+            "distribution",
+            "wholesale",
+        )
+    return True
+
+
+def _workers_comp_required(intake: IntakeRequest, risk_profile: RiskProfile | None) -> bool:
+    if intake.employee_count <= 0:
+        return False
+    evidence_parts: list[str] = [intake.description]
+    if risk_profile:
+        evidence_parts.extend(risk_profile.state_requirements)
+        evidence_parts.extend(risk_profile.employee_implications)
+        evidence_parts.append(risk_profile.reasoning_summary)
+    evidence = " ".join(part for part in evidence_parts if part).casefold()
+    return "workers comp" in evidence and any(
+        term in evidence for term in ("required", "mandatory", "statutory")
+    )
+
+
+def _fallback_workers_comp_requirement(
+    intake: IntakeRequest,
+    risk_profile: RiskProfile | None,
+) -> CoverageRequirement:
+    category = (
+        CoverageCategory.required
+        if _workers_comp_required(intake, risk_profile)
+        else CoverageCategory.recommended
+    )
+    employee_count = max(intake.employee_count, 1)
+    return CoverageRequirement(
+        type="Workers Compensation",
+        category=category,
+        rationale=(
+            "Required because the business has employees and the risk profile flagged state workers compensation obligations."
+            if category == CoverageCategory.required
+            else "Recommended because the business has employees and payroll-related injury exposure."
+        ),
+        estimated_premium_low=max(750.0, employee_count * 250.0),
+        estimated_premium_high=max(1800.0, employee_count * 700.0),
+        confidence=0.72 if category == CoverageCategory.required else 0.6,
+    )
+
+
+def normalize_coverage_requirements_payload(
+    payload: Any,
+    *,
+    intake: IntakeRequest,
+    risk_profile: RiskProfile | None,
+) -> list[CoverageRequirement]:
+    validated = validate_coverage_requirements_payload(payload)
+    deduped: dict[str, CoverageRequirement] = {}
+
+    for requirement in validated:
+        if not _has_supported_coverage_evidence(
+            requirement.type,
+            intake=intake,
+            risk_profile=risk_profile,
+        ):
+            continue
+
+        key = _coverage_key(requirement.type)
+        existing = deduped.get(key)
+        if existing is None:
+            deduped[key] = requirement
+            continue
+
+        merged_category = _choose_coverage_category(
+            existing.category,
+            requirement.category,
+        )
+        merged = CoverageRequirement(
+            type=existing.type if len(existing.type) >= len(requirement.type) else requirement.type,
+            category=merged_category,
+            rationale=(
+                existing.rationale
+                if len(existing.rationale) >= len(requirement.rationale)
+                else requirement.rationale
+            ),
+            estimated_premium_low=min(existing.estimated_premium_low, requirement.estimated_premium_low),
+            estimated_premium_high=max(existing.estimated_premium_high, requirement.estimated_premium_high),
+            confidence=max(existing.confidence, requirement.confidence),
+            trigger_event=existing.trigger_event or requirement.trigger_event,
+        )
+        deduped[key] = merged
+
+    if intake.employee_count > 0 and "workers compensation" not in deduped:
+        deduped["workers compensation"] = _fallback_workers_comp_requirement(
+            intake,
+            risk_profile,
+        )
+
+    return sorted(
+        deduped.values(),
+        key=lambda item: (
+            -_CATEGORY_PRECEDENCE[item.category],
+            item.type.casefold(),
+        ),
+    )
+
+
 def _default_limits_for_coverage(coverage_type: str) -> str:
     name = coverage_type.casefold()
     if "workers compensation" in name:
@@ -545,7 +756,20 @@ def _normalize_requested_coverages(
     coverage_requirements: list[CoverageRequirement],
 ) -> list[SubmissionRequestedCoverage]:
     if isinstance(payload, list) and payload:
-        return [SubmissionRequestedCoverage.model_validate(item) for item in payload]
+        validated = [SubmissionRequestedCoverage.model_validate(item) for item in payload]
+        strengthened = [
+            SubmissionRequestedCoverage(
+                type=item.type,
+                limits=item.limits or _default_limits_for_coverage(item.type or ""),
+                deductible=item.deductible or _default_deductible_for_coverage(item.type or ""),
+                effective_date=item.effective_date or date.today().isoformat(),
+                notes=item.notes,
+            )
+            for item in validated
+            if _meaningful_string(item.type)
+        ]
+        if strengthened:
+            return strengthened
 
     return [
         SubmissionRequestedCoverage(
@@ -658,11 +882,24 @@ def normalize_submission_packet_payload(
         },
     )
 
+    loss_history = [
+        item
+        for item in _normalize_loss_history(raw.get("loss_history"))
+        if any(
+            (
+                item.year is not None,
+                _meaningful_string(item.type),
+                item.amount is not None,
+                _meaningful_string(item.description),
+            )
+        )
+    ]
+
     return SubmissionPacket(
         submission_date=_clean_string(raw.get("submission_date")) or date.today().isoformat(),
         applicant=applicant,
         operations=operations,
-        loss_history=_normalize_loss_history(raw.get("loss_history")),
+        loss_history=loss_history,
         requested_coverages=_normalize_requested_coverages(
             raw.get("requested_coverages"),
             coverage_requirements,
@@ -683,11 +920,15 @@ def build_results_response(
 ) -> ResultsResponse:
     intake = IntakeRequest.model_validate(intake_payload)
     risk_profile = (
-        validate_risk_profile_payload(risk_profile_payload)
+        normalize_risk_profile_payload(risk_profile_payload, intake=intake)
         if risk_profile_payload is not None
         else None
     )
-    coverage_requirements = validate_coverage_requirements_payload(coverage_requirements_payload)
+    coverage_requirements = normalize_coverage_requirements_payload(
+        coverage_requirements_payload,
+        intake=intake,
+        risk_profile=risk_profile,
+    )
     submission_packet = normalize_submission_packet_payload(
         submission_packet_payload,
         intake=intake,

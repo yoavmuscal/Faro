@@ -4,6 +4,8 @@ import SwiftUI
 private let widgetSuiteName = "group.com.faro.shared"
 private let widgetSnapshotKey = "coverage_snapshot"
 
+// MARK: - Entry
+
 struct CoverageEntry: TimelineEntry {
     let date: Date
     let status: WidgetCoverageStatus
@@ -85,7 +87,7 @@ struct CoverageEntry: TimelineEntry {
         isInProgress: false,
         completedSteps: 4,
         totalSteps: 4,
-        nextRenewalDays: nil,
+        nextRenewalDays: 45,
         policyCount: 5,
         requiredCount: 2,
         recommendedCount: 1,
@@ -111,7 +113,13 @@ struct CoverageEntry: TimelineEntry {
         guard totalSteps > 0 else { return 0 }
         return Double(completedSteps) / Double(totalSteps)
     }
+
+    var hasPremiumEstimate: Bool {
+        max(premiumLow, premiumHigh) > 0
+    }
 }
+
+// MARK: - Models
 
 enum WidgetCoverageStatus: String, Codable {
     case healthy
@@ -121,62 +129,56 @@ enum WidgetCoverageStatus: String, Codable {
 
     var icon: String {
         switch self {
-        case .healthy:
-            return "checkmark.shield.fill"
-        case .gapDetected:
-            return "exclamationmark.shield.fill"
-        case .renewalSoon:
-            return "clock.badge.exclamationmark.fill"
-        case .unknown:
-            return "sparkles.rectangle.stack.fill"
+        case .healthy: return "checkmark.shield.fill"
+        case .gapDetected: return "exclamationmark.shield.fill"
+        case .renewalSoon: return "clock.badge.exclamationmark.fill"
+        case .unknown: return "sparkles.rectangle.stack.fill"
         }
     }
 
     var label: String {
         switch self {
-        case .healthy:
-            return "Stable"
-        case .gapDetected:
-            return "Needs Review"
-        case .renewalSoon:
-            return "Renewal Soon"
-        case .unknown:
-            return "Waiting"
+        case .healthy: return "Stable"
+        case .gapDetected: return "Review"
+        case .renewalSoon: return "Renewal"
+        case .unknown: return "Working"
         }
     }
 
-    var tint: Color {
+    func accentColor(for scheme: ColorScheme) -> Color {
         switch self {
         case .healthy:
-            return Color(red: 0.16, green: 0.50, blue: 0.33)
+            return scheme == .dark ? Color(red: 0.45, green: 0.85, blue: 0.62) : Color(red: 0.12, green: 0.52, blue: 0.35)
         case .gapDetected:
-            return Color(red: 0.83, green: 0.42, blue: 0.19)
+            return scheme == .dark ? Color(red: 1.0, green: 0.65, blue: 0.35) : Color(red: 0.78, green: 0.35, blue: 0.12)
         case .renewalSoon:
-            return Color(red: 0.74, green: 0.23, blue: 0.23)
+            return scheme == .dark ? Color(red: 1.0, green: 0.45, blue: 0.45) : Color(red: 0.72, green: 0.18, blue: 0.22)
         case .unknown:
-            return Color(red: 0.36, green: 0.34, blue: 0.47)
+            return scheme == .dark ? Color(red: 0.72, green: 0.68, blue: 1.0) : Color(red: 0.38, green: 0.34, blue: 0.55)
         }
     }
 
-    var accentBackground: Color {
-        switch self {
-        case .healthy:
-            return Color(red: 0.88, green: 0.96, blue: 0.89)
-        case .gapDetected:
-            return Color(red: 0.98, green: 0.92, blue: 0.85)
-        case .renewalSoon:
-            return Color(red: 0.98, green: 0.88, blue: 0.88)
-        case .unknown:
-            return Color(red: 0.92, green: 0.91, blue: 0.96)
-        }
+    func badgeBackground(for scheme: ColorScheme) -> Color {
+        accentColor(for: scheme).opacity(scheme == .dark ? 0.22 : 0.14)
     }
 }
 
 enum WidgetDestination: String, Decodable {
     case analyze
     case coverage
-    case summary
     case submission
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        let raw = try c.decode(String.self)
+        if raw == "summary" {
+            self = .coverage
+        } else if let v = WidgetDestination(rawValue: raw) {
+            self = v
+        } else {
+            self = .analyze
+        }
+    }
 }
 
 enum WidgetCoverageLineCategory: String, Decodable {
@@ -184,25 +186,22 @@ enum WidgetCoverageLineCategory: String, Decodable {
     case recommended
     case projected
 
-    var tint: Color {
+    func tint(for scheme: ColorScheme) -> Color {
         switch self {
         case .required:
-            return Color(red: 0.78, green: 0.27, blue: 0.26)
+            return scheme == .dark ? Color(red: 1.0, green: 0.45, blue: 0.42) : Color(red: 0.78, green: 0.27, blue: 0.26)
         case .recommended:
-            return Color(red: 0.29, green: 0.44, blue: 0.66)
+            return scheme == .dark ? Color(red: 0.55, green: 0.72, blue: 1.0) : Color(red: 0.29, green: 0.44, blue: 0.66)
         case .projected:
-            return Color(red: 0.62, green: 0.49, blue: 0.24)
+            return scheme == .dark ? Color(red: 1.0, green: 0.82, blue: 0.45) : Color(red: 0.62, green: 0.49, blue: 0.24)
         }
     }
 
     var label: String {
         switch self {
-        case .required:
-            return "Required"
-        case .recommended:
-            return "Recommended"
-        case .projected:
-            return "Projected"
+        case .required: return "Req"
+        case .recommended: return "Rec"
+        case .projected: return "Later"
         }
     }
 }
@@ -235,6 +234,8 @@ private struct WidgetSnapshot: Decodable {
     let averageConfidence: Double
     let updatedAt: TimeInterval
 }
+
+// MARK: - Provider
 
 struct CoverageProvider: TimelineProvider {
     func placeholder(in context: Context) -> CoverageEntry {
@@ -292,7 +293,7 @@ struct CoverageProvider: TimelineProvider {
             status: WidgetCoverageStatus(rawValue: statusRaw) ?? .unknown,
             businessName: defaults.string(forKey: "business_name") ?? "Your Business",
             headline: defaults.string(forKey: "coverage_message") ?? "Open Faro to analyze",
-            message: "Open the app to generate a fresh coverage snapshot",
+            message: "Open the app to refresh your snapshot.",
             isInProgress: false,
             completedSteps: 0,
             totalSteps: 4,
@@ -312,6 +313,8 @@ struct CoverageProvider: TimelineProvider {
     }
 }
 
+// MARK: - Widget
+
 struct FaroWidget: Widget {
     let kind = "FaroWidget"
 
@@ -323,20 +326,28 @@ struct FaroWidget: Widget {
                     Color.clear
                 }
         }
-        .configurationDisplayName("Coverage Pulse")
-        .description("Keep Faro's latest coverage readout on your Home Screen.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .configurationDisplayName("Faro Coverage")
+        .description("Business name, premium range, and top coverages at a glance. Tap to jump into the app.")
+        .supportedFamilies([
+            .systemSmall,
+            .systemMedium,
+            .systemLarge,
+            .accessoryInline,
+            .accessoryRectangular
+        ])
     }
 }
 
+// MARK: - Root view
+
 struct FaroWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.colorScheme) private var colorScheme
+
     let entry: CoverageEntry
 
     var body: some View {
-        ZStack {
-            widgetBackground
-
+        Group {
             switch family {
             case .systemSmall:
                 SmallWidgetView(entry: entry)
@@ -344,278 +355,558 @@ struct FaroWidgetView: View {
                 MediumWidgetView(entry: entry)
             case .systemLarge:
                 LargeWidgetView(entry: entry)
+            case .accessoryInline:
+                AccessoryInlineWidgetView(entry: entry)
+            case .accessoryRectangular:
+                AccessoryRectangularWidgetView(entry: entry)
             default:
                 SmallWidgetView(entry: entry)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            if family == .systemSmall || family == .systemMedium || family == .systemLarge {
+                WidgetCanvasBackground(status: entry.status, colorScheme: colorScheme)
+            }
+        }
     }
+}
 
-    private var widgetBackground: some View {
-        RoundedRectangle(cornerRadius: 28, style: .continuous)
+// MARK: - Adaptive background
+
+private struct WidgetCanvasBackground: View {
+    let status: WidgetCoverageStatus
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
             .fill(
                 LinearGradient(
-                    colors: [
-                        Color(red: 0.97, green: 0.95, blue: 0.90),
-                        Color.white
-                    ],
+                    colors: colorScheme == .dark
+                        ? [
+                            Color(red: 0.07, green: 0.07, blue: 0.10),
+                            Color(red: 0.11, green: 0.10, blue: 0.16)
+                        ]
+                        : [
+                            Color(red: 0.98, green: 0.97, blue: 0.95),
+                            Color(red: 1.0, green: 0.99, blue: 1.0)
+                        ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
             )
             .overlay(alignment: .topLeading) {
                 Circle()
-                    .fill(entry.status.accentBackground)
-                    .frame(width: 120, height: 120)
-                    .offset(x: -32, y: -42)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                status.accentColor(for: colorScheme).opacity(colorScheme == .dark ? 0.35 : 0.2),
+                                .clear
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 90
+                        )
+                    )
+                    .frame(width: 140, height: 140)
+                    .offset(x: -40, y: -50)
             }
             .overlay(alignment: .bottomTrailing) {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(entry.status.tint.opacity(0.08))
-                    .frame(width: 120, height: 86)
-                    .rotationEffect(.degrees(-12))
-                    .offset(x: 26, y: 28)
+                Ellipse()
+                    .fill(status.accentColor(for: colorScheme).opacity(colorScheme == .dark ? 0.12 : 0.08))
+                    .frame(width: 140, height: 100)
+                    .rotationEffect(.degrees(-18))
+                    .offset(x: 36, y: 32)
             }
     }
 }
 
+// MARK: - Formatting
+
+private enum WidgetFormat {
+    static func premiumAnnual(low: Double, high: Double) -> String {
+        let lo = Int(low.rounded())
+        let hi = Int(high.rounded())
+        if lo <= 0 && hi <= 0 { return "—" }
+        if lo == hi { return "$\(formatNumber(lo))/yr" }
+        return "$\(formatNumber(lo))–$\(formatNumber(hi))/yr"
+    }
+
+    static func premiumCompact(low: Double, high: Double) -> String {
+        let lo = Int(low.rounded())
+        let hi = Int(high.rounded())
+        if lo <= 0 && hi <= 0 { return "—" }
+        return "$\(shortK(lo))–$\(shortK(hi))"
+    }
+
+    private static func formatNumber(_ n: Int) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.groupingSeparator = ","
+        return f.string(from: NSNumber(value: n)) ?? "\(n)"
+    }
+
+    private static func shortK(_ n: Int) -> String {
+        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
+        if n >= 10_000 { return String(format: "%.0fk", Double(n) / 1000) }
+        if n >= 1000 { return String(format: "%.1fk", Double(n) / 1000) }
+        return "\(n)"
+    }
+
+    static func renewalText(days: Int?) -> String? {
+        guard let d = days, d > 0 else { return nil }
+        if d == 1 { return "Renewal in 1 day" }
+        if d < 14 { return "Renewal in \(d) days" }
+        if d < 60 { return "Renewal in \(d / 7) wk" }
+        return "Renewal ~\(d / 30) mo"
+    }
+}
+
+// MARK: - Small
+
 private struct SmallWidgetView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let entry: CoverageEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            WidgetHeader(entry: entry, colorScheme: colorScheme)
+
+            Spacer(minLength: 6)
+
+            Text(entry.businessName)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.ink(colorScheme))
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+
+            if entry.isInProgress {
+                Text(entry.headline)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(entry.status.accentColor(for: colorScheme))
+                    .lineLimit(2)
+                    .padding(.top, 4)
+
+                ProgressMeter(entry: entry, colorScheme: colorScheme)
+                    .padding(.top, 8)
+
+                Text(pipelineMicroLabel)
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(FaroWidgetColors.faint(colorScheme))
+                    .lineLimit(1)
+                    .padding(.top, 4)
+            } else {
+                Text(entry.headline)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(FaroWidgetColors.muted(colorScheme))
+                    .lineLimit(2)
+                    .padding(.top, 4)
+
+                if entry.hasPremiumEstimate {
+                    Text(WidgetFormat.premiumCompact(low: entry.premiumLow, high: entry.premiumHigh))
+                        .font(.system(size: 13, weight: .heavy, design: .rounded))
+                        .foregroundStyle(entry.status.accentColor(for: colorScheme))
+                        .padding(.top, 6)
+                }
+
+                HStack(spacing: 6) {
+                    MiniStat(icon: "doc.text.fill", value: "\(entry.policyCount)", scheme: colorScheme)
+                    MiniStat(icon: "exclamationmark.circle.fill", value: "\(entry.requiredCount)", scheme: colorScheme)
+                    if entry.averageConfidence > 0 {
+                        MiniStat(icon: "chart.bar.fill", value: "\(Int(entry.averageConfidence * 100))%", scheme: colorScheme)
+                    }
+                }
+                .padding(.top, 8)
+            }
+
+            Spacer(minLength: 0)
+
+            Text("Tap to open")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.faint(colorScheme))
+        }
+        .padding(14)
+    }
+
+    private var pipelineMicroLabel: String {
+        "Risk · Map · Packet · Summary"
+    }
+}
+
+private struct MiniStat: View {
+    let icon: String
+    let value: String
+    let scheme: ColorScheme
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+            Text(value)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(FaroWidgetColors.ink(scheme))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            Capsule(style: .continuous)
+                .fill(FaroWidgetColors.cardFill(scheme))
+        )
+    }
+}
+
+// MARK: - Medium
+
+private struct MediumWidgetView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let entry: CoverageEntry
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            WidgetHeader(entry: entry)
-
-            Spacer(minLength: 0)
-
-            Text(entry.businessName)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .foregroundStyle(WidgetPalette.primaryText)
-                .lineLimit(2)
-
-            if entry.isInProgress {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(entry.headline)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(entry.status.tint)
-                        .lineLimit(1)
-                    ProgressMeter(entry: entry)
-                }
-            } else {
-                Text(entry.headline)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(WidgetPalette.secondaryText)
-                    .lineLimit(2)
-
-                HStack(spacing: 8) {
-                    MetricChip(title: "Policies", value: "\(entry.policyCount)", compact: true)
-                    MetricChip(title: "Req", value: "\(entry.requiredCount)", compact: true)
-                }
-            }
-        }
-        .padding(16)
-    }
-}
-
-private struct MediumWidgetView: View {
-    let entry: CoverageEntry
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            WidgetHeader(entry: entry)
+            WidgetHeader(entry: entry, colorScheme: colorScheme)
 
             HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(entry.businessName)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundStyle(WidgetPalette.primaryText)
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundStyle(FaroWidgetColors.ink(colorScheme))
                         .lineLimit(2)
 
                     Text(entry.headline)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(entry.status.tint)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(entry.status.accentColor(for: colorScheme))
                         .lineLimit(2)
 
                     Text(entry.message)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(WidgetPalette.secondaryText)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(FaroWidgetColors.muted(colorScheme))
                         .lineLimit(2)
 
+                    if let renewal = WidgetFormat.renewalText(days: entry.nextRenewalDays) {
+                        Label(renewal, systemImage: "calendar")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(FaroWidgetColors.muted(colorScheme))
+                    }
+
                     if entry.isInProgress {
-                        ProgressMeter(entry: entry)
+                        ProgressMeter(entry: entry, colorScheme: colorScheme)
+                            .padding(.top, 4)
+                        Text("Pipeline: Risk → Coverage → Submission → Summary")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundStyle(FaroWidgetColors.faint(colorScheme))
                     } else {
-                        ActionPill(title: entry.nextActionTitle, tint: entry.status.tint)
+                        ActionPill(title: entry.nextActionTitle, status: entry.status, colorScheme: colorScheme)
+                            .padding(.top, 2)
                     }
                 }
 
                 Spacer(minLength: 0)
 
                 VStack(alignment: .trailing, spacing: 8) {
-                    MetricChip(title: "Policies", value: "\(entry.policyCount)", compact: false)
-                    MetricChip(title: "Confidence", value: confidenceText, compact: false)
+                    MetricChip(title: "Policies", value: "\(entry.policyCount)", scheme: colorScheme)
+                    if !entry.isInProgress && entry.hasPremiumEstimate {
+                        MetricChip(title: "Est. annual", value: WidgetFormat.premiumCompact(low: entry.premiumLow, high: entry.premiumHigh), scheme: colorScheme, emphasize: true)
+                    }
+                    MetricChip(
+                        title: "Confidence",
+                        value: entry.isInProgress ? "…" : "\(Int(entry.averageConfidence * 100))%",
+                        scheme: colorScheme
+                    )
                 }
             }
 
-            HStack(spacing: 8) {
-                CoverageCountPill(title: "Required", value: entry.requiredCount, tint: entry.status.tint.opacity(0.92))
-                CoverageCountPill(title: "Recommended", value: entry.recommendedCount, tint: Color(red: 0.31, green: 0.45, blue: 0.65))
-                CoverageCountPill(title: "Projected", value: entry.projectedCount, tint: Color(red: 0.63, green: 0.50, blue: 0.24))
+            HStack(spacing: 6) {
+                CategoryCountChip(title: "Req", count: entry.requiredCount, color: WidgetCoverageLineCategory.required.tint(for: colorScheme), scheme: colorScheme)
+                CategoryCountChip(title: "Rec", count: entry.recommendedCount, color: WidgetCoverageLineCategory.recommended.tint(for: colorScheme), scheme: colorScheme)
+                CategoryCountChip(title: "Later", count: entry.projectedCount, color: WidgetCoverageLineCategory.projected.tint(for: colorScheme), scheme: colorScheme)
+            }
+        }
+        .padding(14)
+    }
+}
+
+// MARK: - Large
+
+private struct LargeWidgetView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let entry: CoverageEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            WidgetHeader(entry: entry, colorScheme: colorScheme)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.businessName)
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(FaroWidgetColors.ink(colorScheme))
+                    .lineLimit(2)
+
+                Text(entry.headline)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(entry.status.accentColor(for: colorScheme))
+                    .lineLimit(2)
+
+                Text(entry.message)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(FaroWidgetColors.muted(colorScheme))
+                    .lineLimit(3)
+            }
+
+            if let renewal = WidgetFormat.renewalText(days: entry.nextRenewalDays) {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar.circle.fill")
+                        .font(.system(size: 14))
+                    Text(renewal)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(FaroWidgetColors.muted(colorScheme))
+            }
+
+            if entry.isInProgress {
+                ProgressMeter(entry: entry, colorScheme: colorScheme)
+                PipelineStepRow(completed: entry.completedSteps, total: entry.totalSteps, colorScheme: colorScheme)
+                HStack(spacing: 8) {
+                    LargeMetricTile(title: "Step", value: "\(entry.completedSteps)/\(entry.totalSteps)", scheme: colorScheme)
+                    LargeMetricTile(title: "Next", value: nextPipelineStepName, scheme: colorScheme)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    LargeMetricTile(title: "Policies", value: "\(entry.policyCount)", scheme: colorScheme)
+                    LargeMetricTile(title: "Est. premium", value: entry.hasPremiumEstimate ? WidgetFormat.premiumAnnual(low: entry.premiumLow, high: entry.premiumHigh) : "—", scheme: colorScheme, valueSize: 13)
+                    LargeMetricTile(title: "Confidence", value: "\(Int(entry.averageConfidence * 100))%", scheme: colorScheme)
+                }
+
+                HStack(spacing: 6) {
+                    CategoryCountChip(title: "Required", count: entry.requiredCount, color: WidgetCoverageLineCategory.required.tint(for: colorScheme), scheme: colorScheme)
+                    CategoryCountChip(title: "Recommended", count: entry.recommendedCount, color: WidgetCoverageLineCategory.recommended.tint(for: colorScheme), scheme: colorScheme)
+                    CategoryCountChip(title: "Projected", count: entry.projectedCount, color: WidgetCoverageLineCategory.projected.tint(for: colorScheme), scheme: colorScheme)
+                }
+
+                if !entry.coverageLines.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Top coverages")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(FaroWidgetColors.faint(colorScheme))
+
+                        ForEach(Array(entry.coverageLines.enumerated()), id: \.offset) { _, line in
+                            CoverageLineRow(line: line, colorScheme: colorScheme)
+                        }
+                    }
+                } else if let top = entry.topCoverageType {
+                    HStack(spacing: 8) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(entry.status.accentColor(for: colorScheme))
+                        Text("Focus: \(top)")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(FaroWidgetColors.ink(colorScheme))
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(FaroWidgetColors.cardFill(colorScheme))
+                    )
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            HStack {
+                Spacer()
+                Text("Tap for \(destinationLabel)")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(FaroWidgetColors.faint(colorScheme))
             }
         }
         .padding(16)
     }
 
-    private var confidenceText: String {
-        entry.isInProgress ? "..." : "\(Int(entry.averageConfidence * 100))%"
+    private var nextPipelineStepName: String {
+        let names = ["Risk", "Coverage", "Packet", "Summary"]
+        let idx = min(entry.completedSteps, max(0, names.count - 1))
+        return names[idx]
+    }
+
+    private var destinationLabel: String {
+        switch entry.destination {
+        case .analyze: return "Analyze"
+        case .coverage: return "Coverage"
+        case .submission: return "Submission"
+        }
     }
 }
 
-private struct LargeWidgetView: View {
+private struct PipelineStepRow: View {
+    let completed: Int
+    let total: Int
+    let colorScheme: ColorScheme
+
+    private let labels = ["Risk", "Coverage", "Packet", "Summary"]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<min(total, labels.count), id: \.self) { i in
+                Text(labels[i])
+                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .foregroundStyle(i < completed ? FaroWidgetColors.ink(colorScheme) : FaroWidgetColors.faint(colorScheme))
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+}
+
+private struct LargeMetricTile: View {
+    let title: String
+    let value: String
+    let scheme: ColorScheme
+    var valueSize: CGFloat = 15
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.faint(scheme))
+            Text(value)
+                .font(.system(size: valueSize, weight: .bold, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.ink(scheme))
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(FaroWidgetColors.cardFill(scheme))
+        )
+    }
+}
+
+// MARK: - Lock Screen accessories
+
+private struct AccessoryInlineWidgetView: View {
     let entry: CoverageEntry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            WidgetHeader(entry: entry)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(entry.businessName)
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .foregroundStyle(WidgetPalette.primaryText)
-                    .lineLimit(2)
-
-                Text(entry.headline)
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .foregroundStyle(entry.status.tint)
-                    .lineLimit(2)
-
-                Text(entry.message)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(WidgetPalette.secondaryText)
-                    .lineLimit(2)
-            }
-
-            if entry.isInProgress {
-                VStack(alignment: .leading, spacing: 10) {
-                    ProgressMeter(entry: entry)
-
-                    HStack(spacing: 10) {
-                        MetricCard(title: "Steps", value: "\(entry.completedSteps)/\(entry.totalSteps)", accent: entry.status.tint)
-                        MetricCard(title: "Next", value: "Coverage", accent: Color(red: 0.29, green: 0.40, blue: 0.63))
-                        MetricCard(title: "Action", value: "Watch", accent: Color(red: 0.18, green: 0.47, blue: 0.34))
-                    }
-                }
-            } else {
-                HStack(spacing: 10) {
-                    MetricCard(title: "Policies", value: "\(entry.policyCount)", accent: entry.status.tint)
-                    MetricCard(title: "Premium", value: premiumText, accent: Color(red: 0.18, green: 0.47, blue: 0.34))
-                    MetricCard(title: "Confidence", value: "\(Int(entry.averageConfidence * 100))%", accent: Color(red: 0.29, green: 0.40, blue: 0.63))
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        CoverageCountPill(title: "Required", value: entry.requiredCount, tint: entry.status.tint.opacity(0.92))
-                        CoverageCountPill(title: "Recommended", value: entry.recommendedCount, tint: Color(red: 0.31, green: 0.45, blue: 0.65))
-                        CoverageCountPill(title: "Projected", value: entry.projectedCount, tint: Color(red: 0.63, green: 0.50, blue: 0.24))
-                    }
-
-                    if !entry.coverageLines.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(Array(entry.coverageLines.enumerated()), id: \.offset) { _, line in
-                                CoverageLineRow(line: line)
-                            }
-                        }
-                    } else if let topCoverageType = entry.topCoverageType {
-                        Label(topCoverageType, systemImage: "sparkles")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.22, green: 0.21, blue: 0.28))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(Color.white.opacity(0.7))
-                            )
-                    }
-                }
-            }
+        ViewThatFits {
+            Text("\(entry.businessName) · \(entry.headline)")
+            Text(entry.headline)
         }
-        .padding(18)
-    }
-
-    private var premiumText: String {
-        let highValue = max(Int(entry.premiumHigh.rounded()), Int(entry.premiumLow.rounded()))
-        if highValue <= 0 {
-            return "TBD"
-        }
-        if highValue > 9999 {
-            return "$\(highValue / 1000)k"
-        }
-        return "$\(highValue)"
+        .lineLimit(1)
     }
 }
 
-private struct CoverageLineRow: View {
-    let line: WidgetCoverageLine
+private struct AccessoryRectangularWidgetView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let entry: CoverageEntry
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: entry.status.icon)
+                .font(.system(size: 16, weight: .semibold))
+                .widgetAccentable()
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.businessName)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .opacity(0.85)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var subtitle: String {
+        if entry.isInProgress {
+            return "\(entry.completedSteps)/\(entry.totalSteps) · \(entry.headline)"
+        }
+        if entry.hasPremiumEstimate {
+            return "\(entry.headline) · \(WidgetFormat.premiumCompact(low: entry.premiumLow, high: entry.premiumHigh))"
+        }
+        return entry.headline
+    }
+}
+
+// MARK: - Shared subviews
+
+private struct CoverageLineRow: View {
+    let line: WidgetCoverageLine
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
             Circle()
-                .fill(line.category.tint)
-                .frame(width: 8, height: 8)
+                .fill(line.category.tint(for: colorScheme))
+                .frame(width: 7, height: 7)
                 .padding(.top, 5)
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline) {
                     Text(line.title)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(WidgetPalette.primaryText)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 0)
-
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(FaroWidgetColors.ink(colorScheme))
+                        .lineLimit(2)
+                    Spacer(minLength: 4)
                     Text(line.category.label)
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(line.category.tint)
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        .foregroundStyle(line.category.tint(for: colorScheme))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(line.category.tint(for: colorScheme).opacity(0.15)))
                 }
 
                 if let triggerEvent = line.triggerEvent, !triggerEvent.isEmpty {
                     Text(triggerEvent)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(WidgetPalette.secondaryText)
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(FaroWidgetColors.muted(colorScheme))
                         .lineLimit(2)
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.72))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(FaroWidgetColors.cardFill(colorScheme))
         )
     }
 }
 
 private struct ProgressMeter: View {
     let entry: CoverageEntry
+    let colorScheme: ColorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Pipeline")
+                Text("Agent pipeline")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(WidgetPalette.secondaryText)
+                    .foregroundStyle(FaroWidgetColors.faint(colorScheme))
                 Spacer(minLength: 0)
                 Text("\(entry.completedSteps)/\(max(entry.totalSteps, 1))")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(entry.status.tint)
+                    .foregroundStyle(entry.status.accentColor(for: colorScheme))
             }
 
             GeometryReader { proxy in
                 let width = proxy.size.width
                 ZStack(alignment: .leading) {
                     Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.78))
+                        .fill(FaroWidgetColors.cardFill(colorScheme))
                     Capsule(style: .continuous)
-                        .fill(entry.status.tint)
-                        .frame(width: max(width * entry.progressFraction, width * 0.12))
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    entry.status.accentColor(for: colorScheme),
+                                    entry.status.accentColor(for: colorScheme).opacity(0.75)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(width * entry.progressFraction, width * 0.1))
                 }
             }
             .frame(height: 8)
@@ -625,129 +916,139 @@ private struct ProgressMeter: View {
 
 private struct WidgetHeader: View {
     let entry: CoverageEntry
+    let colorScheme: ColorScheme
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Label(entry.isInProgress ? "Working" : entry.status.label, systemImage: entry.status.icon)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(entry.status.tint)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(entry.status.accentBackground)
-                )
+        HStack(alignment: .center, spacing: 8) {
+            HStack(spacing: 5) {
+                Image(systemName: "shield.checkered")
+                    .font(.system(size: 11, weight: .bold))
+                Text("Faro")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+            }
+            .foregroundStyle(FaroWidgetColors.ink(colorScheme))
 
             Spacer(minLength: 0)
 
-            Text(relativeUpdatedAt)
+            Text(entry.isInProgress ? "In progress" : entry.status.label)
                 .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(WidgetPalette.tertiaryText)
+                .foregroundStyle(entry.status.accentColor(for: colorScheme))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(entry.status.badgeBackground(for: colorScheme))
+                )
+
+            Text(relativeUpdatedAt)
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.faint(colorScheme))
+                .monospacedDigit()
         }
     }
 
     private var relativeUpdatedAt: String {
         let minutes = max(0, Int(Date().timeIntervalSince(entry.date) / 60))
-        if minutes == 0 {
-            return "Now"
-        }
-        if minutes < 60 {
-            return "\(minutes)m"
-        }
-        return "\(minutes / 60)h"
+        if minutes == 0 { return "now" }
+        if minutes < 60 { return "\(minutes)m" }
+        if minutes < 1440 { return "\(minutes / 60)h" }
+        return "\(minutes / 1440)d"
     }
 }
 
 private struct MetricChip: View {
     let title: String
     let value: String
-    let compact: Bool
+    let scheme: ColorScheme
+    var emphasize: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: compact ? 2 : 4) {
+        VStack(alignment: .trailing, spacing: 3) {
             Text(title.uppercased())
-                .font(.system(size: compact ? 8 : 9, weight: .bold, design: .rounded))
-                .foregroundStyle(WidgetPalette.tertiaryText)
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.faint(scheme))
             Text(value)
-                .font(.system(size: compact ? 14 : 16, weight: .bold, design: .rounded))
-                .foregroundStyle(WidgetPalette.primaryText)
+                .font(.system(size: emphasize ? 15 : 14, weight: .bold, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.ink(scheme))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
         }
-        .padding(.horizontal, compact ? 8 : 10)
-        .padding(.vertical, compact ? 6 : 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.78))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(FaroWidgetColors.cardFill(scheme))
         )
     }
 }
 
-private struct MetricCard: View {
+private struct CategoryCountChip: View {
     let title: String
-    let value: String
-    let accent: Color
+    let count: Int
+    let color: Color
+    let scheme: ColorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(accent.opacity(0.9))
-            Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(WidgetPalette.primaryText)
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+            Text("\(count)")
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .foregroundStyle(color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.78))
+            Capsule(style: .continuous)
+                .fill(color.opacity(scheme == .dark ? 0.18 : 0.12))
         )
     }
 }
 
 private struct ActionPill: View {
     let title: String
-    let tint: Color
+    let status: WidgetCoverageStatus
+    let colorScheme: ColorScheme
 
     var body: some View {
-        Text(title)
-            .font(.system(size: 11, weight: .bold, design: .rounded))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(tint.opacity(0.12))
-            )
-    }
-}
-
-private struct CoverageCountPill: View {
-    let title: String
-    let value: Int
-    let tint: Color
-
-    var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
+            Image(systemName: "arrow.right.circle.fill")
+                .font(.system(size: 11))
             Text(title)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-            Text("\(value)")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
         }
-        .foregroundStyle(tint)
+        .foregroundStyle(status.accentColor(for: colorScheme))
         .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.vertical, 6)
         .background(
             Capsule(style: .continuous)
-                .fill(tint.opacity(0.12))
+                .fill(status.accentColor(for: colorScheme).opacity(0.14))
         )
     }
 }
 
-private enum WidgetPalette {
-    static let primaryText = Color(red: 0.16, green: 0.15, blue: 0.20)
-    static let secondaryText = Color(red: 0.37, green: 0.35, blue: 0.44)
-    static let tertiaryText = Color(red: 0.45, green: 0.42, blue: 0.51)
+// MARK: - Colors (avoid names that collide with SwiftUI ShapeStyle.primary / .secondary / .tertiary)
+
+private enum FaroWidgetColors {
+    static func ink(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0.96, green: 0.96, blue: 0.98) : Color(red: 0.12, green: 0.11, blue: 0.15)
+    }
+
+    static func muted(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0.72, green: 0.70, blue: 0.78) : Color(red: 0.38, green: 0.36, blue: 0.44)
+    }
+
+    static func faint(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0.52, green: 0.50, blue: 0.58) : Color(red: 0.48, green: 0.45, blue: 0.54)
+    }
+
+    static func cardFill(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.white.opacity(0.09) : Color.white.opacity(0.82)
+    }
 }
+
+// MARK: - Previews
 
 #Preview("Small", as: .systemSmall) {
     FaroWidget()
@@ -763,6 +1064,12 @@ private enum WidgetPalette {
 }
 
 #Preview("Large", as: .systemLarge) {
+    FaroWidget()
+} timeline: {
+    CoverageEntry.gapPreview
+}
+
+#Preview("Accessory Rect", as: .accessoryRectangular) {
     FaroWidget()
 } timeline: {
     CoverageEntry.gapPreview

@@ -3,25 +3,48 @@ LangGraph pipeline — 4 sequential steps.
 Streams step status to a WebSocket connection as each node completes.
 """
 import asyncio
-from typing import Callable, Awaitable
+import os
+from typing import Awaitable, Callable
 from langgraph.graph import StateGraph, END
 
 from .steps import risk_profiler, coverage_mapper, submission_builder, explainer
 from models import AgentStep, StepStatus
 
+STEP_TIMEOUT_SECONDS = float(os.environ.get("PIPELINE_STEP_TIMEOUT_SECONDS", "40"))
+
 
 # ── Graph node wrappers ───────────────────────────────────────────────────────
 
-def make_node(step_module, step_name: AgentStep, broadcast: Callable[[dict], Awaitable[None]]):
+def make_node(
+    step_module,
+    step_name: AgentStep,
+    broadcast: Callable[..., Awaitable[None]],
+):
     async def node(state: dict) -> dict:
         await broadcast({"step": step_name, "status": StepStatus.running, "summary": f"Running {step_name}..."})
         try:
-            new_state = await step_module.run(state)
+            new_state = await asyncio.wait_for(
+                step_module.run(state),
+                timeout=STEP_TIMEOUT_SECONDS,
+            )
             summary = _extract_summary(step_name, new_state)
-            await broadcast({"step": step_name, "status": StepStatus.complete, "summary": summary})
+            await broadcast(
+                {"step": step_name, "status": StepStatus.complete, "summary": summary},
+                state_snapshot=new_state,
+            )
             return new_state
+        except asyncio.TimeoutError as exc:
+            message = f"{step_name} timed out after {STEP_TIMEOUT_SECONDS:.0f}s"
+            await broadcast(
+                {"step": step_name, "status": StepStatus.error, "summary": message},
+                state_snapshot=state,
+            )
+            raise TimeoutError(message) from exc
         except Exception as e:
-            await broadcast({"step": step_name, "status": StepStatus.error, "summary": str(e)})
+            await broadcast(
+                {"step": step_name, "status": StepStatus.error, "summary": str(e)},
+                state_snapshot=state,
+            )
             raise
 
     node.__name__ = step_name
@@ -45,7 +68,7 @@ def _extract_summary(step: AgentStep, state: dict) -> str:
 
 # ── Graph builder ─────────────────────────────────────────────────────────────
 
-def build_graph(broadcast: Callable[[dict], Awaitable[None]]) -> StateGraph:
+def build_graph(broadcast: Callable[..., Awaitable[None]]) -> StateGraph:
     builder = StateGraph(dict)
 
     builder.add_node(AgentStep.risk_profiler, make_node(risk_profiler, AgentStep.risk_profiler, broadcast))
@@ -62,7 +85,11 @@ def build_graph(broadcast: Callable[[dict], Awaitable[None]]) -> StateGraph:
     return builder.compile()
 
 
-async def run_pipeline(session_id: str, intake: dict, broadcast: Callable[[dict], Awaitable[None]]) -> dict:
+async def run_pipeline(
+    session_id: str,
+    intake: dict,
+    broadcast: Callable[..., Awaitable[None]],
+) -> dict:
     graph = build_graph(broadcast)
     initial_state = {"session_id": session_id, "intake": intake}
     final_state = await graph.ainvoke(initial_state)

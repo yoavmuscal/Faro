@@ -12,7 +12,6 @@ enum WidgetDataWriter {
     private enum WidgetDestination: String, Codable {
         case analyze
         case coverage
-        case summary
         case submission
     }
 
@@ -147,8 +146,8 @@ enum WidgetDataWriter {
             status = .unknown
             headline = "Coverage summary ready"
             message = "\(policyCount) policies analyzed"
-            nextActionTitle = "Hear summary"
-            destination = .summary
+            nextActionTitle = "View results"
+            destination = .coverage
         } else {
             status = .unknown
             headline = "Open Faro to analyze"

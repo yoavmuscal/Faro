@@ -1,37 +1,40 @@
 import SwiftUI
 
-/// Translucent “liquid glass” surfaces using system materials and a soft hairline stroke.
+/// Elevated card surfaces using semantic `FaroPalette.surface` (no translucent grey materials).
 struct FaroGlassCard: ViewModifier {
     var cornerRadius: CGFloat = FaroRadius.lg
-    var material: Material = .regularMaterial
 
     func body(content: Content) -> some View {
         content
-            .background(material, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(FaroPalette.surface)
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(FaroPalette.glassStroke, lineWidth: 1)
+                    .strokeBorder(FaroPalette.glassStroke.opacity(0.55), lineWidth: 1)
             )
     }
 }
 
 struct FaroGlassCapsule: ViewModifier {
-    var material: Material = .thinMaterial
-
     func body(content: Content) -> some View {
         content
-            .background(material, in: Capsule(style: .continuous))
-            .overlay(Capsule(style: .continuous).strokeBorder(FaroPalette.glassStroke, lineWidth: 1))
+            .background(Capsule(style: .continuous).fill(FaroPalette.surface))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(FaroPalette.glassStroke.opacity(0.55), lineWidth: 1)
+            )
     }
 }
 
 extension View {
-    func faroGlassCard(cornerRadius: CGFloat = FaroRadius.lg, material: Material = .regularMaterial) -> some View {
-        modifier(FaroGlassCard(cornerRadius: cornerRadius, material: material))
+    func faroGlassCard(cornerRadius: CGFloat = FaroRadius.lg) -> some View {
+        modifier(FaroGlassCard(cornerRadius: cornerRadius))
     }
 
-    func faroGlassCapsule(material: Material = .thinMaterial) -> some View {
-        modifier(FaroGlassCapsule(material: material))
+    func faroGlassCapsule() -> some View {
+        modifier(FaroGlassCapsule())
     }
 
     /// Full-screen or section background: cream/dark base with a subtle purple wash.
@@ -50,17 +53,6 @@ extension View {
                 .ignoresSafeArea()
             }
         }
-    }
-
-    /// Staggered fade-and-slide entrance animation.
-    func faroStaggerIn(appeared: Bool, delay: Double = 0) -> some View {
-        self
-            .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 16)
-            .animation(
-                .spring(response: 0.6, dampingFraction: 0.82).delay(delay),
-                value: appeared
-            )
     }
 }
 
@@ -124,5 +116,5 @@ struct FaroScaleButtonStyle: ButtonStyle {
 }
 
 extension ButtonStyle where Self == FaroScaleButtonStyle {
-    static var faroScale: FaroScaleButtonStyle { .init() }
+    static var faroScale: FaroScaleButtonStyle { FaroScaleButtonStyle() }
 }

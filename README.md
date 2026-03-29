@@ -26,6 +26,8 @@ The pipeline currently runs four major steps:
 3. `submission_builder`
 4. `explainer`
 
+The backend reasoning path currently uses Gemini, with `gemini-3-flash-preview` as the primary model and `gemini-2.5-flash` as the fallback for structured analysis.
+
 The iOS app drives intake, listens for pipeline progress over WebSocket, and renders the final coverage dashboard. The widget reads a shared app-group snapshot written by the main app.
 
 ## Local development
@@ -68,6 +70,8 @@ See `backend/.env.example`.
 Common variables:
 
 - `GEMINI_API_KEY`
+- `GEMINI_PRIMARY_MODEL` (optional override)
+- `GEMINI_FALLBACK_MODEL` (optional override)
 - `MONGODB_URI`
 - `MONGODB_DB`
 - `ELEVENLABS_API_KEY`

@@ -5,7 +5,6 @@ struct RiskProfileView: View {
     let riskProfile: RiskProfile
     let businessName: String
 
-    @State private var appeared = false
     @State private var gaugeProgress: Double = 0
 
     private var riskLevelNormalized: Double {
@@ -30,30 +29,23 @@ struct RiskProfileView: View {
         ScrollView {
             VStack(spacing: FaroSpacing.lg) {
                 headerSection
-                    .faroStaggerIn(appeared: appeared, delay: 0)
 
                 riskGaugeSection
-                    .faroStaggerIn(appeared: appeared, delay: 0.06)
 
                 if let exposures = riskProfile.primaryExposures, !exposures.isEmpty {
                     exposuresSection(exposures)
-                        .faroStaggerIn(appeared: appeared, delay: 0.12)
                 }
                 if let stateReqs = riskProfile.stateRequirements, !stateReqs.isEmpty {
                     stateRequirementsSection(stateReqs)
-                        .faroStaggerIn(appeared: appeared, delay: 0.18)
                 }
                 if let empImplications = riskProfile.employeeImplications, !empImplications.isEmpty {
                     employeeSection(empImplications)
-                        .faroStaggerIn(appeared: appeared, delay: 0.24)
                 }
                 if let unusualRisks = riskProfile.unusualRisks, !unusualRisks.isEmpty {
                     unusualRisksSection(unusualRisks)
-                        .faroStaggerIn(appeared: appeared, delay: 0.3)
                 }
                 if let summary = riskProfile.reasoningSummary, !summary.isEmpty {
                     summarySection(summary)
-                        .faroStaggerIn(appeared: appeared, delay: 0.36)
                 }
 
                 Spacer(minLength: 40)
@@ -66,10 +58,7 @@ struct RiskProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .onAppear {
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { appeared = true }
-            withAnimation(.spring(response: 1.2, dampingFraction: 0.7).delay(0.4)) {
-                gaugeProgress = riskLevelNormalized
-            }
+            gaugeProgress = riskLevelNormalized
         }
     }
 
@@ -113,7 +102,6 @@ struct RiskProfileView: View {
                     Text(riskProfile.riskLevel?.capitalized ?? "Unknown")
                         .font(FaroType.title2())
                         .foregroundStyle(riskLevelColor)
-                        .contentTransition(.numericText())
                     Text("Risk Level")
                         .font(FaroType.caption())
                         .foregroundStyle(FaroPalette.ink.opacity(0.5))
@@ -141,19 +129,22 @@ struct RiskProfileView: View {
         VStack(alignment: .leading, spacing: FaroSpacing.sm) {
             SectionHeader(title: "Primary Exposures", icon: "exclamationmark.triangle.fill", tint: FaroPalette.warning)
 
-            FlowLayout(spacing: FaroSpacing.sm) {
+            VStack(alignment: .leading, spacing: FaroSpacing.sm) {
                 ForEach(exposures, id: \.self) { exposure in
-                    HStack(spacing: 6) {
+                    HStack(alignment: .top, spacing: FaroSpacing.sm) {
                         Image(systemName: "shield.slash.fill")
                             .font(.caption2)
                             .foregroundStyle(FaroPalette.warning)
+                            .padding(.top, 2)
                         Text(exposure)
-                            .font(FaroType.caption())
+                            .font(FaroType.subheadline())
                             .foregroundStyle(FaroPalette.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.horizontal, FaroSpacing.sm + 2)
-                    .padding(.vertical, FaroSpacing.xs + 2)
-                    .faroGlassCard(cornerRadius: FaroRadius.md, material: .ultraThinMaterial)
+                    .padding(FaroSpacing.sm + 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .faroGlassCard(cornerRadius: FaroRadius.lg)
                 }
             }
         }
@@ -175,6 +166,8 @@ struct RiskProfileView: View {
                     Text(req)
                         .font(FaroType.subheadline())
                         .foregroundStyle(FaroPalette.ink.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -196,6 +189,8 @@ struct RiskProfileView: View {
                     Text(item)
                         .font(FaroType.subheadline())
                         .foregroundStyle(FaroPalette.ink.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -217,6 +212,8 @@ struct RiskProfileView: View {
                     Text(risk)
                         .font(FaroType.subheadline())
                         .foregroundStyle(FaroPalette.ink.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -277,44 +274,6 @@ struct TagPill: View {
         .padding(.vertical, FaroSpacing.xs + 1)
         .background(tint.opacity(0.12))
         .clipShape(Capsule())
-    }
-}
-
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = computeLayout(proposal: proposal, subviews: subviews)
-        return result.size
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = computeLayout(proposal: proposal, subviews: subviews)
-        for (index, origin) in result.origins.enumerated() {
-            subviews[index].place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y), proposal: .unspecified)
-        }
-    }
-
-    private func computeLayout(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, origins: [CGPoint]) {
-        let maxWidth = proposal.width ?? .infinity
-        var origins: [CGPoint] = []
-        var currentX: CGFloat = 0
-        var currentY: CGFloat = 0
-        var rowHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentX + size.width > maxWidth, currentX > 0 {
-                currentX = 0
-                currentY += rowHeight + spacing
-                rowHeight = 0
-            }
-            origins.append(CGPoint(x: currentX, y: currentY))
-            rowHeight = max(rowHeight, size.height)
-            currentX += size.width + spacing
-        }
-
-        return (CGSize(width: maxWidth, height: currentY + rowHeight), origins)
     }
 }
 

@@ -2,14 +2,12 @@
 Step 1 — Risk Profiler
 Input:  raw business description from intake
 Output: structured risk profile JSON
-Model:  K2 Think V2 (with Claude fallback)
+Model:  Gemini 3 Flash with Gemini 2.5 Flash fallback
 """
-import json
 
-from ..llm import chat_with_fallback, parse_json_response
-from pydantic import ValidationError
+from models import IntakeRequest, normalize_risk_profile_payload
 
-from models import validate_risk_profile_payload
+from ..llm import generate_validated_json_with_fallback
 
 
 SYSTEM_PROMPT = """You are a commercial insurance risk analyst with deep expertise in small business risk assessment.
@@ -47,20 +45,25 @@ Return a JSON object with this exact structure:
 
 
 async def run(state: dict) -> dict:
-    intake = state["intake"]
+    intake = IntakeRequest.model_validate(state["intake"])
     prompt = USER_PROMPT_TEMPLATE.format(
-        business_name=intake["business_name"],
-        description=intake["description"],
-        employee_count=intake["employee_count"],
-        state=intake["state"],
-        annual_revenue=intake["annual_revenue"],
+        business_name=intake.business_name,
+        description=intake.description,
+        employee_count=intake.employee_count,
+        state=intake.state,
+        annual_revenue=intake.annual_revenue,
     )
-    raw = await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt)
-    try:
-        parsed = parse_json_response(raw)
-        risk_profile = validate_risk_profile_payload(parsed)
-    except (ValueError, ValidationError, json.JSONDecodeError) as e:
-        snippet = (raw[:500] + "…") if isinstance(raw, str) and len(raw) > 500 else raw
-        raise ValueError(f"Risk profiler failed to parse LLM output: {e}\n\nRaw: {snippet!r}")
+    risk_profile, llm_meta = await generate_validated_json_with_fallback(
+        system=SYSTEM_PROMPT,
+        user=prompt,
+        validator=lambda parsed: normalize_risk_profile_payload(parsed, intake=intake),
+    )
 
-    return {**state, "risk_profile": risk_profile.model_dump()}
+    analysis_meta = dict(state.get("analysis_meta") or {})
+    analysis_meta["risk_profiler"] = llm_meta
+
+    return {
+        **state,
+        "risk_profile": risk_profile.model_dump(mode="json"),
+        "analysis_meta": analysis_meta,
+    }

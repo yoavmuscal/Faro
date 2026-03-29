@@ -94,6 +94,11 @@ final class FaroAppState: ObservableObject {
     }
 
     func openSection(_ rawValue: String) {
-        selectedSectionRawValue = rawValue
+        // Legacy widget/deep links used "summary"; summary lives on Coverage now.
+        if rawValue == "summary" {
+            selectedSectionRawValue = "coverage"
+        } else {
+            selectedSectionRawValue = rawValue
+        }
     }
 }

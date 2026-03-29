@@ -7,7 +7,6 @@ struct SummaryPlayerView: View {
     let businessName: String
 
     @StateObject private var player = SummaryAudioPlayer()
-    @State private var appeared = false
 
     var body: some View {
         ScrollView {
@@ -22,17 +21,14 @@ struct SummaryPlayerView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, FaroSpacing.md)
-                .faroStaggerIn(appeared: appeared, delay: 0)
 
                 if !voiceURL.isEmpty {
                     audioPlayerCard
                         .padding(.horizontal, FaroSpacing.md)
-                        .faroStaggerIn(appeared: appeared, delay: 0.06)
                 }
 
                 summaryTextCard
                     .padding(.horizontal, FaroSpacing.md)
-                    .faroStaggerIn(appeared: appeared, delay: 0.12)
 
                 Spacer(minLength: 40)
             }
@@ -43,9 +39,6 @@ struct SummaryPlayerView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .onAppear {
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { appeared = true }
-        }
     }
 
     private var audioPlayerCard: some View {
@@ -127,6 +120,10 @@ final class SummaryAudioPlayer: ObservableObject {
 
     func play(url: String) {
         guard let audioURL = URL(string: url) else { return }
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.duckOthers])
+        try? AVAudioSession.sharedInstance().setActive(true)
+        #endif
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil

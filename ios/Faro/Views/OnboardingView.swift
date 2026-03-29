@@ -116,17 +116,13 @@ final class OnboardingViewModel: ObservableObject {
         if currentField == .annualRevenue {
             Task { await submit() }
         } else {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
-                currentField = Field(rawValue: currentField.rawValue + 1)!
-            }
+            currentField = Field(rawValue: currentField.rawValue + 1)!
         }
     }
 
     func goBack() {
         guard currentField.rawValue > 0 else { return }
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
-            currentField = Field(rawValue: currentField.rawValue - 1)!
-        }
+        currentField = Field(rawValue: currentField.rawValue - 1)!
     }
 
     func loadDemoData() {
@@ -138,9 +134,7 @@ final class OnboardingViewModel: ObservableObject {
         employeeCountText = "28"
         state = "NJ"
         annualRevenueText = "1,200,000"
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
-            currentField = .annualRevenue
-        }
+        currentField = .annualRevenue
     }
 
     func prefillContact(firstName: String, lastName: String) {
@@ -225,13 +219,8 @@ struct OnboardingView: View {
                 }
             }
         }
-        .navigationDestination(isPresented: Binding(
-            get: { vm.sessionId != nil },
-            set: { if !$0 { vm.sessionId = nil } }
-        )) {
-            if let sessionId = vm.sessionId {
-                AgentTrackerView(sessionId: sessionId, businessName: vm.businessName)
-            }
+        .navigationDestination(item: $vm.sessionId) { sessionId in
+            AgentTrackerView(sessionId: sessionId, businessName: vm.businessName)
         }
         .onChange(of: vm.sessionId) { _, newId in
             if let id = newId {
@@ -382,10 +371,6 @@ struct OnboardingView: View {
                     )
                 }
             }
-            .transition(.asymmetric(
-                insertion: .move(edge: .trailing).combined(with: .opacity),
-                removal: .move(edge: .leading).combined(with: .opacity)
-            ))
             .id(vm.currentField)
         }
     }
@@ -499,7 +484,7 @@ private struct OnboardingQuestionCard: View {
                     .padding(FaroSpacing.md)
                     .background {
                         RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
-                            .fill(.ultraThinMaterial)
+                            .fill(FaroPalette.surface)
                     }
                     .overlay {
                         RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
@@ -518,7 +503,7 @@ private struct OnboardingQuestionCard: View {
                     .frame(height: 54)
                     .background {
                         RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
-                            .fill(.ultraThinMaterial)
+                            .fill(FaroPalette.surface)
                     }
                     .overlay {
                         RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
@@ -600,7 +585,7 @@ private struct ContactInfoCard: View {
             .frame(height: 54)
             .background {
                 RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
-                    .fill(.ultraThinMaterial)
+                    .fill(FaroPalette.surface)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
@@ -636,13 +621,13 @@ struct QuestionCard: View {
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 100, maxHeight: 160)
                     .padding(FaroSpacing.sm + 2)
-                    .faroGlassCard(cornerRadius: FaroRadius.md, material: .thinMaterial)
+                    .faroGlassCard(cornerRadius: FaroRadius.md)
             } else {
                 TextField(placeholder, text: $text)
                     .font(FaroType.body())
                     .faroKeyboard(keyboard)
                     .padding(FaroSpacing.md)
-                    .faroGlassCard(cornerRadius: FaroRadius.md, material: .thinMaterial)
+                    .faroGlassCard(cornerRadius: FaroRadius.md)
             }
         }
         .padding(.horizontal)

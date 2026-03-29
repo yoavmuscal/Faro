@@ -2,21 +2,19 @@
 Step 3 — Submission Builder
 Input:  coverage requirements from Step 2
 Output: carrier-ready submission packet as structured JSON, exportable as PDF
-Model:  K2 Think V2 (with Claude fallback)
+Model:  Gemini 3 Flash with Gemini 2.5 Flash fallback
 """
-import json
 from datetime import date
-
-from pydantic import ValidationError
+import json
 
 from models import (
     IntakeRequest,
     normalize_submission_packet_payload,
-    validate_coverage_requirements_payload,
-    validate_risk_profile_payload,
+    normalize_coverage_requirements_payload,
+    normalize_risk_profile_payload,
 )
 
-from ..llm import chat_with_fallback, parse_json_response
+from ..llm import generate_validated_json_with_fallback
 
 SYSTEM_PROMPT = """You are an expert commercial insurance broker who prepares carrier submission packets.
 You know exactly what information underwriters need. Be thorough and precise.
@@ -103,9 +101,11 @@ Important:
 
 async def run(state: dict) -> dict:
     intake = IntakeRequest.model_validate(state["intake"])
-    risk_profile = validate_risk_profile_payload(state["risk_profile"])
-    coverage_requirements = validate_coverage_requirements_payload(
-        state["coverage_requirements"]
+    risk_profile = normalize_risk_profile_payload(state["risk_profile"], intake=intake)
+    coverage_requirements = normalize_coverage_requirements_payload(
+        state["coverage_requirements"],
+        intake=intake,
+        risk_profile=risk_profile,
     )
 
     prompt = USER_PROMPT_TEMPLATE.format(
@@ -121,20 +121,22 @@ async def run(state: dict) -> dict:
         ),
         today=date.today().isoformat(),
     )
-    raw = await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt)
-    try:
-        parsed = parse_json_response(raw)
-        submission_packet = normalize_submission_packet_payload(
+    submission_packet, llm_meta = await generate_validated_json_with_fallback(
+        system=SYSTEM_PROMPT,
+        user=prompt,
+        validator=lambda parsed: normalize_submission_packet_payload(
             parsed,
             intake=intake,
             risk_profile=risk_profile,
             coverage_requirements=coverage_requirements,
-        )
-    except (ValueError, ValidationError, json.JSONDecodeError) as e:
-        snippet = (raw[:500] + "…") if isinstance(raw, str) and len(raw) > 500 else raw
-        raise ValueError(f"Submission builder failed to parse LLM output: {e}\n\nRaw: {snippet!r}")
+        ),
+    )
+
+    analysis_meta = dict(state.get("analysis_meta") or {})
+    analysis_meta["submission_builder"] = llm_meta
 
     return {
         **state,
         "submission_packet": submission_packet.model_dump(mode="json"),
+        "analysis_meta": analysis_meta,
     }

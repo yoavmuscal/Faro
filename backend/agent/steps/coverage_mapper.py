@@ -2,15 +2,17 @@
 Step 2 — Coverage Mapper
 Input:  risk profile from Step 1
 Output: coverage requirements list with priority flags
-Model:  K2 Think V2 (with Claude fallback)
+Model:  Gemini 3 Flash with Gemini 2.5 Flash fallback
 """
 import json
 
-from pydantic import ValidationError
+from models import (
+    IntakeRequest,
+    normalize_coverage_requirements_payload,
+    normalize_risk_profile_payload,
+)
 
-from models import validate_coverage_requirements_payload, validate_risk_profile_payload
-
-from ..llm import chat_with_fallback, parse_json_response
+from ..llm import generate_validated_json_with_fallback
 
 SYSTEM_PROMPT = """You are a commercial insurance coverage specialist.
 Given a business risk profile, you determine exactly which insurance policies are needed.
@@ -62,22 +64,27 @@ Base premium estimates on typical market rates for this business size and state.
 
 
 async def run(state: dict) -> dict:
-    intake = state["intake"]
-    risk_profile = validate_risk_profile_payload(state["risk_profile"])
+    intake = IntakeRequest.model_validate(state["intake"])
+    risk_profile = normalize_risk_profile_payload(state["risk_profile"], intake=intake)
     prompt = USER_PROMPT_TEMPLATE.format(
         risk_profile_json=json.dumps(risk_profile.model_dump(mode="json"), indent=2),
-        business_name=intake["business_name"],
-        state=intake["state"],
-        employee_count=intake["employee_count"],
-        annual_revenue=intake["annual_revenue"],
+        business_name=intake.business_name,
+        state=intake.state,
+        employee_count=intake.employee_count,
+        annual_revenue=intake.annual_revenue,
     )
-    raw = await chat_with_fallback(system=SYSTEM_PROMPT, user=prompt)
-    try:
-        parsed = parse_json_response(raw)
-        coverage_requirements = validate_coverage_requirements_payload(parsed)
-    except (ValueError, ValidationError, json.JSONDecodeError) as e:
-        snippet = (raw[:500] + "…") if isinstance(raw, str) and len(raw) > 500 else raw
-        raise ValueError(f"Coverage mapper failed to parse LLM output: {e}\n\nRaw: {snippet!r}")
+    coverage_requirements, llm_meta = await generate_validated_json_with_fallback(
+        system=SYSTEM_PROMPT,
+        user=prompt,
+        validator=lambda parsed: normalize_coverage_requirements_payload(
+            parsed,
+            intake=intake,
+            risk_profile=risk_profile,
+        ),
+    )
+
+    analysis_meta = dict(state.get("analysis_meta") or {})
+    analysis_meta["coverage_mapper"] = llm_meta
 
     return {
         **state,
@@ -85,4 +92,5 @@ async def run(state: dict) -> dict:
             requirement.model_dump(mode="json")
             for requirement in coverage_requirements
         ],
+        "analysis_meta": analysis_meta,
     }

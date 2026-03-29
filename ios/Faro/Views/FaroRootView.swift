@@ -5,7 +5,6 @@ enum FaroSection: String, CaseIterable, Identifiable, Hashable {
     case coverage
     case riskProfile
     case submission
-    case summary
     case settings
 
     var id: String { rawValue }
@@ -16,8 +15,7 @@ enum FaroSection: String, CaseIterable, Identifiable, Hashable {
         case .coverage: return "Coverage"
         case .riskProfile: return "Risk Profile"
         case .submission: return "Submission"
-        case .summary: return "Summary"
-        case .settings: return "Settings"
+        case .settings: return "More"
         }
     }
 
@@ -27,13 +25,12 @@ enum FaroSection: String, CaseIterable, Identifiable, Hashable {
         case .coverage: return "shield.checkered"
         case .riskProfile: return "exclamationmark.triangle.fill"
         case .submission: return "doc.text.fill"
-        case .summary: return "text.bubble.fill"
-        case .settings: return "gearshape"
+        case .settings: return "ellipsis"
         }
     }
 
     static var analysisSections: [FaroSection] {
-        [.coverage, .riskProfile, .submission, .summary]
+        [.coverage, .riskProfile, .submission]
     }
 }
 
@@ -99,12 +96,6 @@ struct FaroRootView: View {
             .tag(FaroSection.submission)
 
             NavigationStack {
-                summaryRoot
-            }
-            .tabItem { Label(FaroSection.summary.title, systemImage: FaroSection.summary.systemImage) }
-            .tag(FaroSection.summary)
-
-            NavigationStack {
                 FaroSettingsView()
             }
             .tabItem { Label(FaroSection.settings.title, systemImage: FaroSection.settings.systemImage) }
@@ -155,8 +146,6 @@ struct FaroRootView: View {
             NavigationStack { riskProfileRoot }
         case .submission:
             NavigationStack { submissionRoot }
-        case .summary:
-            NavigationStack { summaryRoot }
         case .settings:
             NavigationStack { FaroSettingsView() }
         }
@@ -203,22 +192,6 @@ struct FaroRootView: View {
         }
     }
 
-    @ViewBuilder
-    private var summaryRoot: some View {
-        if let summary = appState.results?.plainEnglishSummary, !summary.isEmpty {
-            SummaryPlayerView(
-                summary: summary,
-                voiceURL: appState.results?.voiceSummaryUrl ?? "",
-                businessName: appState.businessName
-            )
-        } else {
-            AnalysisPlaceholderView(
-                title: "No summary yet",
-                message: "A plain-English summary of your coverage recommendations with voice playback will appear here after analysis.",
-                icon: "text.bubble"
-            ) { section = .analyze }
-        }
-    }
 }
 
 private extension FaroRootView {
@@ -388,7 +361,7 @@ struct WelcomeView: View {
             .frame(height: 52)
             .background {
                 RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
-                    .fill(.ultraThinMaterial)
+                    .fill(FaroPalette.surface)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)

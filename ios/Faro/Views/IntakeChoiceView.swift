@@ -120,7 +120,7 @@ struct IntakeChoiceView: View {
                 .foregroundStyle(FaroPalette.ink.opacity(0.35))
         }
         .padding(FaroSpacing.md)
-        .faroGlassCard(cornerRadius: FaroRadius.md, material: .thinMaterial)
+        .faroGlassCard(cornerRadius: FaroRadius.md)
     }
 
     private var demoBadgeRow: some View {
@@ -161,7 +161,7 @@ struct IntakeChoiceView: View {
         .padding(FaroSpacing.md)
         .background {
             RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
-                .fill(.thinMaterial)
+                .fill(FaroPalette.surface)
         }
         .overlay {
             RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)

@@ -7,11 +7,8 @@ struct AgentTrackerView: View {
     let businessName: String
 
     @StateObject private var ws: WebSocketService
-    @State private var navigateToDashboard = false
-    @State private var results: ResultsResponse?
     @State private var isLoadingResults = false
     @State private var errorMessage: String?
-    @State private var appeared = false
 
     private let allSteps: [AgentStep] = [.riskProfiler, .coverageMapper, .submissionBuilder, .explainer]
 
@@ -46,24 +43,20 @@ struct AgentTrackerView: View {
                 ProgressView(value: Double(completedCount), total: Double(allSteps.count))
                     .tint(hasError ? FaroPalette.danger : FaroPalette.purpleDeep)
                     .padding(.top, FaroSpacing.xs)
-                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: completedCount)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(FaroSpacing.md)
-            .faroStaggerIn(appeared: appeared, delay: 0)
 
             ScrollView {
                 LazyVStack(spacing: FaroSpacing.sm + 2) {
-                    ForEach(Array(allSteps.enumerated()), id: \.element) { index, step in
+                    ForEach(Array(allSteps.enumerated()), id: \.element) { _, step in
                         StepCard(
                             step: step,
                             update: ws.stepUpdates.first(where: { $0.step == step })
                         )
-                        .faroStaggerIn(appeared: appeared, delay: 0.08 + Double(index) * 0.06)
                     }
                 }
                 .padding(FaroSpacing.md)
-                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: ws.stepUpdates.count)
             }
 
             if let error = errorMessage {
@@ -111,16 +104,10 @@ struct AgentTrackerView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .navigationBarBackButtonHidden(isComplete)
-        .navigationDestination(isPresented: $navigateToDashboard) {
-            if let results {
-                CoverageDashboardView(results: results, sessionId: sessionId, businessName: businessName)
-            }
-        }
         .onAppear {
             Task { @MainActor in
                 let token = await authManager.accessToken()
                 ws.connect(accessToken: token)
-                withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { appeared = true }
             }
         }
         .onDisappear { ws.disconnect() }
@@ -131,9 +118,8 @@ struct AgentTrackerView: View {
         errorMessage = nil
         do {
             let fetched = try await APIService.shared.fetchResults(sessionId: sessionId)
-            results = fetched
             appState.completeAnalysis(results: fetched)
-            navigateToDashboard = true
+            // Tab switches to Coverage via completeAnalysis — do not push CoverageDashboardView here.
         } catch let error as APIError {
             errorMessage = error.message
         } catch {
@@ -206,7 +192,6 @@ struct StepCard: View {
                     Image(systemName: "checkmark")
                         .font(.system(size: 16, weight: .bold, design: .rounded))
                         .foregroundStyle(FaroPalette.success)
-                        .transition(.scale.combined(with: .opacity))
                 } else {
                     Image(systemName: stepIcon)
                         .font(.system(size: 16, weight: .medium, design: .rounded))
@@ -224,7 +209,6 @@ struct StepCard: View {
                         .font(FaroType.caption())
                         .foregroundStyle(FaroPalette.ink.opacity(0.55))
                         .fixedSize(horizontal: false, vertical: true)
-                        .transition(.opacity)
                 } else if update == nil {
                     Text(stepSubtitle)
                         .font(FaroType.caption())
@@ -242,12 +226,10 @@ struct StepCard: View {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(FaroPalette.success)
                     .font(.body)
-                    .transition(.scale.combined(with: .opacity))
             }
         }
         .padding(FaroSpacing.md)
-        .faroGlassCard(cornerRadius: FaroRadius.lg, material: .ultraThinMaterial)
-        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: update?.status)
+        .faroGlassCard(cornerRadius: FaroRadius.lg)
     }
 
     var statusColor: Color {

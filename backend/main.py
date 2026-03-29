@@ -17,8 +17,11 @@ from models import (
     ResultsResponse,
     StatusResponse, CoverageStatus,
     ConvStartResponse, ConvCompleteRequest, ConvCompleteResponse,
+    StepStatus,
     build_results_response,
-    validate_coverage_requirements_payload,
+    normalize_coverage_requirements_payload,
+    normalize_risk_profile_payload,
+    normalize_submission_packet_payload,
 )
 import database as db
 from agent.pipeline import run_pipeline
@@ -54,6 +57,72 @@ app.add_middleware(
 _ws_connections: dict[str, WebSocket] = {}
 
 
+def _wire_value(value):
+    return value.value if hasattr(value, "value") else value
+
+
+def _coverage_requirements_to_storage(coverage_requirements):
+    return [
+        {
+            "type": requirement.type,
+            "category": requirement.category.value,
+            "rationale": requirement.rationale,
+            "estimated_premium_low": requirement.estimated_premium_low,
+            "estimated_premium_high": requirement.estimated_premium_high,
+            "confidence": requirement.confidence,
+            "trigger_event": requirement.trigger_event,
+        }
+        for requirement in coverage_requirements
+    ]
+
+
+def _normalized_session_fields_from_state(state_snapshot: dict) -> dict:
+    intake = IntakeRequest.model_validate(state_snapshot.get("intake") or {})
+    payload: dict = {
+        "intake": intake.model_dump(mode="json"),
+    }
+    analysis_meta = state_snapshot.get("analysis_meta")
+    if analysis_meta:
+        payload["analysis_meta"] = analysis_meta
+
+    risk_profile = None
+    if state_snapshot.get("risk_profile") is not None:
+        risk_profile = normalize_risk_profile_payload(
+            state_snapshot.get("risk_profile"),
+            intake=intake,
+        )
+        payload["risk_profile"] = risk_profile.model_dump(mode="json")
+
+    coverage_requirements = []
+    if state_snapshot.get("coverage_requirements") is not None:
+        coverage_requirements = normalize_coverage_requirements_payload(
+            state_snapshot.get("coverage_requirements") or [],
+            intake=intake,
+            risk_profile=risk_profile,
+        )
+        payload["coverage_requirements"] = _coverage_requirements_to_storage(
+            coverage_requirements
+        )
+
+    if state_snapshot.get("submission_packet") is not None:
+        submission_packet = normalize_submission_packet_payload(
+            state_snapshot.get("submission_packet"),
+            intake=intake,
+            risk_profile=risk_profile,
+            coverage_requirements=coverage_requirements,
+        )
+        payload["submission_packet"] = submission_packet.model_dump(mode="json")
+
+    if state_snapshot.get("plain_english_summary") is not None:
+        payload["plain_english_summary"] = state_snapshot.get("plain_english_summary")
+    if state_snapshot.get("voice_url") is not None:
+        payload["voice_url"] = state_snapshot.get("voice_url") or ""
+    if state_snapshot.get("submission_packet_url") is not None:
+        payload["submission_packet_url"] = state_snapshot.get("submission_packet_url") or ""
+
+    return payload
+
+
 # ── POST /intake ──────────────────────────────────────────────────────────────
 
 @app.post("/intake", response_model=IntakeResponse, dependencies=_api_auth)
@@ -70,12 +139,65 @@ async def intake(body: IntakeRequest):
 
 
 async def _run_pipeline_task(session_id: str, intake: dict):
-    async def broadcast(update: dict):
-        await db.save_session(session_id, {f"step_{update['step']}": update})
+    last_failure: dict[str, str] | None = None
+    step_failures: dict[str, str] = {}
+    existing_session = await db.get_session(session_id) or {}
+    persisted_analysis_meta = dict(existing_session.get("analysis_meta") or {})
+
+    async def broadcast(update: dict, *, state_snapshot: dict | None = None):
+        nonlocal last_failure
+        update_payload = {
+            "step": _wire_value(update["step"]),
+            "status": _wire_value(update["status"]),
+            "summary": update["summary"],
+        }
+        await db.save_session(
+            session_id,
+            {
+                f"step_{update_payload['step']}": update_payload,
+                "pipeline_status": (
+                    "error"
+                    if update_payload["status"] == StepStatus.error.value
+                    else "running"
+                ),
+            },
+        )
+
+        if state_snapshot and update_payload["status"] == StepStatus.complete.value:
+            try:
+                partial_payload = _normalized_session_fields_from_state(state_snapshot)
+                partial_analysis_meta = dict(partial_payload.get("analysis_meta") or {})
+                persisted_analysis_meta.update(partial_analysis_meta)
+                if persisted_analysis_meta:
+                    partial_payload["analysis_meta"] = persisted_analysis_meta
+                partial_payload["pipeline_status"] = "running"
+                await db.save_session(session_id, partial_payload)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to persist partial pipeline state for %s/%s: %s",
+                    session_id,
+                    update_payload["step"],
+                    exc,
+                )
+
+        if update_payload["status"] == StepStatus.error.value:
+            last_failure = {
+                "step": update_payload["step"],
+                "error": update_payload["summary"],
+            }
+            step_failures[update_payload["step"]] = update_payload["summary"]
+            await db.save_session(
+                session_id,
+                {
+                    "last_failed_step": update_payload["step"],
+                    "step_failures": step_failures,
+                },
+            )
+
         ws = _ws_connections.get(session_id)
         if ws:
             try:
-                await ws.send_text(json.dumps(update))
+                await ws.send_text(json.dumps(update_payload))
             except Exception:
                 pass
 
@@ -99,18 +221,13 @@ async def _run_pipeline_task(session_id: str, intake: dict):
                 results.risk_profile.model_dump(mode="json")
                 if results.risk_profile else None
             ),
-            "coverage_requirements": [
-                {
-                    "type": option.type,
-                    "category": option.category.value,
-                    "rationale": option.description,
-                    "estimated_premium_low": option.estimated_premium_low,
-                    "estimated_premium_high": option.estimated_premium_high,
-                    "confidence": option.confidence,
-                    "trigger_event": option.trigger_event,
-                }
-                for option in results.coverage_options
-            ],
+            "coverage_requirements": _coverage_requirements_to_storage(
+                normalize_coverage_requirements_payload(
+                    final_state.get("coverage_requirements") or [],
+                    intake=IntakeRequest.model_validate(intake),
+                    risk_profile=results.risk_profile,
+                )
+            ),
             "submission_packet": (
                 results.submission_packet.model_dump(mode="json")
                 if results.submission_packet else None
@@ -118,6 +235,11 @@ async def _run_pipeline_task(session_id: str, intake: dict):
             "plain_english_summary": results.plain_english_summary,
             "voice_url": results.voice_summary_url,
             "submission_packet_url": results.submission_packet_url,
+            "analysis_meta": {
+                **persisted_analysis_meta,
+                **dict(final_state.get("analysis_meta") or {}),
+            },
+            "step_failures": step_failures,
         })
     except asyncio.TimeoutError:
         await db.save_session(
@@ -125,10 +247,20 @@ async def _run_pipeline_task(session_id: str, intake: dict):
             {
                 "pipeline_status": "error",
                 "error": f"Pipeline timed out after {PIPELINE_TIMEOUT_SECONDS}s",
+                "last_failed_step": (last_failure or {}).get("step"),
+                "step_failures": step_failures,
             },
         )
     except Exception as e:
-        await db.save_session(session_id, {"pipeline_status": "error", "error": str(e)})
+        await db.save_session(
+            session_id,
+            {
+                "pipeline_status": "error",
+                "error": str(e),
+                "last_failed_step": (last_failure or {}).get("step"),
+                "step_failures": step_failures,
+            },
+        )
 
 
 # ── POST /conv/start ──────────────────────────────────────────────────────────
@@ -156,27 +288,27 @@ async def conv_complete(body: ConvCompleteRequest):
         )
 
     # 1. Ask Gemini to extract the 5 standard fields from the transcript
-    raw_intake_dict = await elevenlabs_conv.extract_intake_from_transcript(body.transcript)
-    
-    # 2. Convert to the standard IntakeRequest
     try:
-        intake_req = IntakeRequest(**raw_intake_dict)
-    except Exception as e:
-        logger.error(f"Failed to parse gemini output into IntakeRequest: {e}")
-        # fallback defaults so we don't crash
-        intake_req = IntakeRequest(
-            business_name=raw_intake_dict.get("business_name", "Unknown Business"),
-            description=raw_intake_dict.get("description", "Not specified"),
-            employee_count=1,
-            state="NY",
-            annual_revenue=0.0
+        raw_intake_dict, intake_meta = await elevenlabs_conv.extract_intake_from_transcript(
+            body.transcript
         )
+        intake_req = IntakeRequest(**raw_intake_dict)
+    except Exception as exc:
+        logger.warning("Voice intake extraction failed for session %s: %s", session_id, exc)
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "We couldn't confidently extract your business details from the conversation. "
+                "Please retry voice intake or enter the details manually."
+            ),
+        ) from exc
 
     # 3. Save to DB just like standard /intake
     await db.save_session(session_id, {
         "session_id": session_id,
         "intake": intake_req.model_dump(),
         "pipeline_status": "pending",
+        "analysis_meta": {"conv_intake": intake_meta},
     })
     
     # 4. Fire the pipeline background task
@@ -255,23 +387,32 @@ async def get_status(session_id: str):
         return StatusResponse(status=CoverageStatus.unknown, message="Analysis in progress...")
 
     try:
-        coverage = validate_coverage_requirements_payload(
-            session.get("coverage_requirements") or []
+        intake = IntakeRequest.model_validate(session.get("intake") or {})
+        risk_profile = (
+            normalize_risk_profile_payload(session.get("risk_profile"), intake=intake)
+            if session.get("risk_profile") is not None
+            else None
+        )
+        coverage = normalize_coverage_requirements_payload(
+            session.get("coverage_requirements") or [],
+            intake=intake,
+            risk_profile=risk_profile,
         )
     except Exception:
         return StatusResponse(
             status=CoverageStatus.unknown,
             message="Coverage results need to be refreshed.",
         )
-    required_count = sum(1 for c in coverage if c.category.value == "required")
-
-    if required_count > 0:
+    if coverage:
         return StatusResponse(
             status=CoverageStatus.healthy,
             next_renewal_days=365,
-            message=f"Coverage analysis complete. {required_count} required policies identified.",
+            message=f"Coverage analysis complete. {len(coverage)} policy recommendations identified.",
         )
-    return StatusResponse(status=CoverageStatus.unknown, message="Coverage review recommended")
+    return StatusResponse(
+        status=CoverageStatus.gap_detected,
+        message="Coverage analysis completed but did not identify usable policy recommendations.",
+    )
 
 
 # ── GET /audio/{session_id} ──────────────────────────────────────────────────
