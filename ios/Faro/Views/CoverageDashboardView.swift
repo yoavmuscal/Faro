@@ -1,11 +1,8 @@
 import SwiftUI
 import Charts
 import AVFoundation
-#if os(macOS)
-import AppKit
-#endif
 
-/// Presents `ActivityShareSheet` after PDF generation (iOS).
+/// Presents `ActivityShareSheet` after PDF generation.
 private struct PDFShareDocument: Identifiable {
     let id = UUID()
     let url: URL
@@ -152,19 +149,11 @@ struct CoverageDashboardView: View {
                 CoverageDetailSheet(option: option)
             }
         }
-        #if os(iOS)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 pdfToolbarButtons
             }
         }
-        #elseif os(macOS)
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                pdfToolbarButtons
-            }
-        }
-        #endif
     }
 
     // MARK: - Sections
@@ -304,11 +293,7 @@ struct CoverageDashboardView: View {
         defer { vm.isGeneratingPDF = false }
         guard let url = PDFBuilder.build(from: results, businessName: businessName) else { return }
         pdfURL = url
-        #if os(iOS)
         pdfShareDocument = PDFShareDocument(url: url)
-        #elseif os(macOS)
-        NSWorkspace.shared.activateFileViewerSelecting([url])
-        #endif
     }
 
     private func categoryTint(_ category: CoverageCategory) -> Color {

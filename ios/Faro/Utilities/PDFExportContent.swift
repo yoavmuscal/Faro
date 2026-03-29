@@ -1,6 +1,6 @@
 import Foundation
 
-/// Text blocks for the Faro export PDF (shared by iOS and macOS PDF builders).
+/// Text blocks for the Faro export PDF.
 enum PDFExportContent {
 
     struct Section {
