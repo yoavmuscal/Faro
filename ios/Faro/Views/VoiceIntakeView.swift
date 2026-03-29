@@ -169,7 +169,15 @@ struct VoiceIntakeView: View {
                         .font(.system(size: 50))
                         .foregroundColor(FaroPalette.danger)
                         .padding(.vertical, FaroSpacing.xl)
-                    Text("Error: \(msg)").font(FaroType.headline())
+                    Text(msg)
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.danger)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    Button("Retry") {
+                        Task { await vm.startConversationPhase() }
+                    }
+                    .padding(.top, FaroSpacing.sm)
                 }
             }
             .frame(maxWidth: .infinity)
