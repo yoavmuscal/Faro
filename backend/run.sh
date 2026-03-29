@@ -3,12 +3,19 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if [[ ! -d .venv ]]; then
-  echo "No backend/.venv found. Create it with:" >&2
-  echo "  cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
-  exit 1
+# Prefer .venv; fall back to .uenv (some clones use that name).
+if [[ -d .venv ]]; then
+  VENV_DIR=".venv"
+elif [[ -d .uenv ]]; then
+  VENV_DIR=".uenv"
+else
+  echo "No venv in backend/ — creating .venv and installing requirements (first run only)…" >&2
+  python3 -m venv .venv
+  .venv/bin/pip install -U pip >/dev/null
+  .venv/bin/pip install -r requirements.txt
+  VENV_DIR=".venv"
 fi
 
 # shellcheck source=/dev/null
-source .venv/bin/activate
+source "${VENV_DIR}/bin/activate"
 exec uvicorn main:app --host 127.0.0.1 --port 8000
