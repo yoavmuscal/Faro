@@ -39,7 +39,7 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     @Published var transcript: [ConvTranscriptTurn] = []
     @Published var isAgentSpeaking: Bool = false
     private nonisolated(unsafe) var _agentSpeaking = false
-    private nonisolated(unsafe) var _audioGeneration: UInt64 = 0
+    private nonisolated(unsafe) var _pendingBuffers: Int32 = 0
 
     private nonisolated(unsafe) var webSocketTask: URLSessionWebSocketTask?
     private nonisolated(unsafe) var urlSession: URLSession?        // strong ref — prevents ARC dealloc killing the socket
@@ -208,18 +208,10 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
             let eventId = eid.flatMap { Int("\($0)") } ?? 0
             if eventId <= lastInterruptEventId { return }
             self._agentSpeaking = true
-            self._audioGeneration &+= 1
-            let gen = self._audioGeneration
+            OSAtomicIncrement32(&self._pendingBuffers)
             Task { @MainActor in
                 self.isAgentSpeaking = true
                 self.playIncomingAudio(data: raw)
-            }
-            // Auto-unmute mic ~800ms after the last audio chunk.
-            // If another audio chunk arrives before then, gen won't match.
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                guard let self, self._audioGeneration == gen else { return }
-                self._agentSpeaking = false
-                Task { @MainActor in self.isAgentSpeaking = false }
             }
 
         case "agent_response":
@@ -271,6 +263,7 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
                 lastInterruptEventId = n
             }
             self._agentSpeaking = false
+            self._pendingBuffers = 0
             Task { @MainActor in
                 self.isAgentSpeaking = false
                 self.playerNode.stop()
@@ -436,7 +429,14 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
             memcpy(dst[0], base, data.count)
         }
 
-        playerNode.scheduleBuffer(buffer, completionHandler: nil)
+        playerNode.scheduleBuffer(buffer) { [weak self] in
+            guard let self else { return }
+            let remaining = OSAtomicDecrement32(&self._pendingBuffers)
+            if remaining <= 0 {
+                self._agentSpeaking = false
+                Task { @MainActor in self.isAgentSpeaking = false }
+            }
+        }
     }
 
     // MARK: - URLSessionWebSocketDelegate
