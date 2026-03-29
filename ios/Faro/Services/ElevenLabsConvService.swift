@@ -101,9 +101,10 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
             webSocketTask?.resume()
         }
 
-        // Handshake confirmed — now exchange the initiation message and start listening.
-        try await sendConversationInitiationClientData()
+        // Start the receive loop first so we never miss the server's metadata response,
+        // then send the initiation message that kicks off the conversation.
         listenForMessages()
+        try await sendConversationInitiationClientData()
 
         state = .connected
 
@@ -142,23 +143,10 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     }
 
     private func sendConversationInitiationClientData() async throws {
-        // ElevenLabs source_info.source is a strict server-side enum:
-        // "twilio"|"python_sdk"|"swift_sdk"|"react_sdk"|"js_sdk"|"web"|"custom"
-        // Sending anything outside that list (e.g. "ios") causes "Invalid message received".
-        let payload: [String: Any] = [
-            "type": "conversation_initiation_client_data",
-            "custom_llm_extra_body": [:] as [String: Any],
-            "conversation_config_override": [:] as [String: Any],
-            "dynamic_variables": [:] as [String: Any],
-            "source_info": [
-                "source": "custom",
-                "version": Self.appVersion,
-            ],
-        ]
-        let data = try JSONSerialization.data(withJSONObject: payload, options: [])
-        guard let json = String(data: data, encoding: .utf8) else {
-            throw URLError(.cannotParseResponse)
-        }
+        // Only the "type" field is required per the ElevenLabs WebSocket API spec.
+        // Sending empty dicts for optional fields (custom_llm_extra_body, etc.)
+        // causes the server to close the connection with 1008 "Invalid message received".
+        let json = "{\"type\":\"conversation_initiation_client_data\"}"
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             webSocketTask?.send(.string(json)) { error in
                 if let error {
