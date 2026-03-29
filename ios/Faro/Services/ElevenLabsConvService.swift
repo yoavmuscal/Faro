@@ -38,6 +38,7 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     @Published var state: ConnectionState = .disconnected
     @Published var transcript: [ConvTranscriptTurn] = []
     @Published var isAgentSpeaking: Bool = false
+    @Published var conversationEndedByServer: Bool = false
     private nonisolated(unsafe) var _agentSpeaking = false
     private nonisolated(unsafe) var _pendingBuffers: Int32 = 0
 
@@ -75,6 +76,7 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     func connect(signedUrl: String) async throws {
         state = .connecting
         transcript.removeAll()
+        conversationEndedByServer = false
         resetSessionAudioState()
 
         #if os(iOS)
@@ -171,10 +173,13 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
                 self.listenForMessages()
             case .failure(let error):
                 Task { @MainActor in
-                    // Clean up resources but preserve .error state so the user sees the message.
-                    // (Calling disconnect() here would immediately overwrite .error with .disconnected.)
-                    self.cleanupAudioAndSocket()
-                    self.state = .error("WebSocket error: \(error.localizedDescription)")
+                    switch self.state {
+                    case .connected, .connecting:
+                        self.cleanupAudioAndSocket()
+                        self.state = .error("WebSocket error: \(error.localizedDescription)")
+                    default:
+                        break
+                    }
                 }
             }
         }
@@ -464,7 +469,6 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
         let reasonStr = reason.flatMap { String(data: $0, encoding: .utf8) } ?? "none"
         let msg = "Server closed connection (code \(closeCode.rawValue), reason: \(reasonStr))"
         Task { @MainActor in
-            // If we're still waiting for the handshake, fail the connection continuation.
             if connectionContinuation != nil {
                 connectionContinuation?.resume(throwing: URLError(.cannotConnectToHost,
                     userInfo: [NSLocalizedDescriptionKey: msg]))
@@ -474,7 +478,12 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
             switch self.state {
             case .connected, .connecting:
                 self.cleanupAudioAndSocket()
-                self.state = .error(msg)
+                if closeCode == .normalClosure || closeCode == .goingAway {
+                    self.state = .disconnected
+                    self.conversationEndedByServer = true
+                } else {
+                    self.state = .error(msg)
+                }
             default:
                 break
             }

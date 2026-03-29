@@ -104,6 +104,7 @@ struct CoverageOption: Codable, Identifiable {
     let confidence: Double
     let category: CoverageCategory
     let triggerEvent: String?
+    let exampleCarriers: [String]?
 
     var id: String { type }
 
@@ -111,11 +112,39 @@ struct CoverageOption: Codable, Identifiable {
 
     var premiumMidpoint: Double { (estimatedPremiumLow + estimatedPremiumHigh) / 2 }
 
+    /// Client-side fallback when the backend doesn't provide carrier examples.
+    var resolvedCarriers: [String] {
+        if let ec = exampleCarriers, !ec.isEmpty { return ec }
+        return Self.fallbackCarriers[type.lowercased()] ?? Self.fallbackCarriers.first(where: { type.lowercased().contains($0.key) })?.value ?? []
+    }
+
+    private static let fallbackCarriers: [String: [String]] = [
+        "general liability": ["Hartford", "Travelers", "CNA"],
+        "workers compensation": ["EMPLOYERS", "AmTrust", "Zurich"],
+        "workers' compensation": ["EMPLOYERS", "AmTrust", "Zurich"],
+        "cyber liability": ["Coalition", "Corvus", "Chubb"],
+        "cyber": ["Coalition", "Corvus", "Chubb"],
+        "epli": ["Hiscox", "Travelers", "Hartford"],
+        "employment practices": ["Hiscox", "Travelers", "Hartford"],
+        "professional liability": ["Hiscox", "Beazley", "CNA"],
+        "errors & omissions": ["Hiscox", "Beazley", "CNA"],
+        "e&o": ["Hiscox", "Beazley", "CNA"],
+        "business owner": ["Hartford", "Nationwide", "Progressive"],
+        "bop": ["Hartford", "Nationwide", "Progressive"],
+        "commercial auto": ["Progressive", "GEICO Commercial", "Sentry"],
+        "commercial property": ["Chubb", "Zurich", "FM Global"],
+        "umbrella": ["Markel", "RLI", "CNA"],
+        "directors & officers": ["Chubb", "AIG", "Travelers"],
+        "d&o": ["Chubb", "AIG", "Travelers"],
+        "product liability": ["Zurich", "AIG", "Hartford"],
+    ]
+
     enum CodingKeys: String, CodingKey {
         case type, description, category, confidence
         case estimatedPremiumLow = "estimated_premium_low"
         case estimatedPremiumHigh = "estimated_premium_high"
         case triggerEvent = "trigger_event"
+        case exampleCarriers = "example_carriers"
     }
 }
 

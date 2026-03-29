@@ -22,6 +22,10 @@ final class VoiceIntakeViewModel: ObservableObject {
         liveService.transcript
     }
 
+    var conversationEndedByServer: Bool {
+        liveService.conversationEndedByServer
+    }
+
     /// True once the user has spoken at least one turn — required before submitting.
     var hasUserTurns: Bool {
         transcript.contains { $0.role == "user" }
@@ -129,6 +133,11 @@ struct VoiceIntakeView: View {
                 appState.beginNewAnalysis(sessionId: id, businessName: "Your Business")
             }
         }
+        .onChange(of: vm.conversationEndedByServer) { _, ended in
+            if ended && !vm.isSubmitting && vm.analysisSessionId == nil {
+                vm.disconnectAndSubmit()
+            }
+        }
     }
 
     private var liveConversationUI: some View {
@@ -185,31 +194,41 @@ struct VoiceIntakeView: View {
             Spacer()
             
             // Transcript View
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: FaroSpacing.sm) {
-                    ForEach(Array(vm.transcript.enumerated()), id: \.offset) { _, turn in
-                        HStack {
-                            if turn.role == "user" {
-                                Spacer()
-                                Text(turn.message)
-                                    .padding(12)
-                                    .background(FaroPalette.purpleDeep)
-                                    .foregroundColor(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                            } else {
-                                Text(turn.message)
-                                    .padding(12)
-                                    .background(Color.gray.opacity(0.15))
-                                    .foregroundColor(.primary)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                                Spacer()
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                        ForEach(Array(vm.transcript.enumerated()), id: \.offset) { idx, turn in
+                            HStack {
+                                if turn.role == "user" {
+                                    Spacer()
+                                    Text(turn.message)
+                                        .padding(12)
+                                        .background(FaroPalette.purpleDeep)
+                                        .foregroundColor(.white)
+                                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                                } else {
+                                    Text(turn.message)
+                                        .padding(12)
+                                        .background(Color.gray.opacity(0.15))
+                                        .foregroundColor(.primary)
+                                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                                    Spacer()
+                                }
                             }
+                            .padding(.horizontal)
+                            .id(idx)
                         }
-                        .padding(.horizontal)
+                    }
+                }
+                .frame(maxHeight: 250)
+                .onChange(of: vm.transcript.count) { _, _ in
+                    if let last = vm.transcript.indices.last {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(last, anchor: .bottom)
+                        }
                     }
                 }
             }
-            .frame(maxHeight: 250)
             
             if let error = vm.errorMessage {
                 Text(error)

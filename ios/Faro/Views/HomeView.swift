@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var appState: FaroAppState
+    @EnvironmentObject private var authManager: AuthManager
     @Binding var selectedSection: FaroSection
     @Environment(\.horizontalSizeClass) private var hSizeClass
 
@@ -12,6 +13,7 @@ struct HomeView: View {
             VStack(spacing: FaroSpacing.lg) {
                 headerRow
                 overviewCard
+                getStartedCard
                 sectionCards
             }
             .padding(.horizontal, isIPad ? FaroSpacing.xl : FaroSpacing.md)
@@ -258,6 +260,170 @@ struct HomeView: View {
         .buttonStyle(.faroScale)
     }
 
+    // MARK: - Get Started
+
+    private var getStartedCard: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            SectionHeader(title: "Get Started", icon: "sparkles", tint: FaroPalette.purpleDeep)
+
+            if APIConfig.auth0MissingClientIdOnly {
+                homeAuthWarningBanner
+            } else if authManager.isAuthConfigured && !authManager.isLoggedIn {
+                homeAuthSignInPrompt
+            }
+
+            VStack(spacing: FaroSpacing.sm) {
+                NavigationLink { OnboardingView() } label: {
+                    homeIntakeRow(
+                        title: "Guided Questionnaire",
+                        subtitle: "Step-by-step form — type at your own pace.",
+                        icon: "list.bullet.rectangle",
+                        iconColor: FaroPalette.purpleDeep
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Divider().opacity(0.4)
+
+                NavigationLink { VoiceIntakeView() } label: {
+                    homeIntakeRow(
+                        title: "Conversational Intake",
+                        subtitle: "Talk through the details with your AI agent.",
+                        icon: "waveform",
+                        iconColor: FaroPalette.info
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Divider().opacity(0.4)
+
+                NavigationLink { OnboardingView(isDemo: true) } label: {
+                    homeIntakeDemoRow
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(FaroSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faroGlassCard(cornerRadius: FaroRadius.xl)
+    }
+
+    private func homeIntakeRow(title: String, subtitle: String, icon: String, iconColor: Color) -> some View {
+        HStack(spacing: FaroSpacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: FaroRadius.sm, style: .continuous)
+                    .fill(iconColor.opacity(0.12))
+                    .frame(width: 38, height: 38)
+                Image(systemName: icon)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(iconColor)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(FaroType.subheadline(.semibold))
+                    .foregroundStyle(FaroPalette.ink)
+                Text(subtitle)
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.25))
+        }
+        .padding(.vertical, FaroSpacing.xs)
+    }
+
+    private var homeIntakeDemoRow: some View {
+        HStack(spacing: FaroSpacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: FaroRadius.sm, style: .continuous)
+                    .fill(FaroPalette.purple.opacity(0.12))
+                    .frame(width: 38, height: 38)
+                Image(systemName: "play.circle.fill")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(FaroPalette.purple)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("Quick Demo")
+                        .font(FaroType.subheadline(.semibold))
+                        .foregroundStyle(FaroPalette.ink)
+                    Text("PRE-FILLED")
+                        .font(FaroType.caption2(.bold))
+                        .foregroundStyle(FaroPalette.purpleDeep)
+                        .faroPillTag(color: FaroPalette.purpleDeep, intensity: 0.1)
+                }
+                Text("See a full analysis using sample daycare data.")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.25))
+        }
+        .padding(.vertical, FaroSpacing.xs)
+    }
+
+    private var homeAuthWarningBanner: some View {
+        HStack(spacing: FaroSpacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(FaroPalette.warning)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Auth0 not configured")
+                    .font(FaroType.caption(.semibold))
+                    .foregroundStyle(FaroPalette.ink)
+                Text("Add AUTH0_CLIENT_ID in Info.plist to enable API access.")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(FaroSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                .fill(FaroPalette.warning.opacity(0.08))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                .strokeBorder(FaroPalette.warning.opacity(0.3), lineWidth: 0.5)
+        }
+    }
+
+    private var homeAuthSignInPrompt: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+            Text("Sign in with Auth0 so your analysis requests reach the Faro API.")
+                .font(FaroType.caption())
+                .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                Task { await authManager.login() }
+            } label: {
+                Label("Sign in with Auth0", systemImage: "person.badge.key.fill")
+                    .font(FaroType.headline())
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+            }
+            .buttonStyle(.faroGradient)
+
+            if let err = authManager.lastError, !err.isEmpty {
+                Text(err)
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.danger)
+            }
+        }
+    }
+
     // MARK: - Computed helpers
 
     private var initials: String {
@@ -308,7 +474,7 @@ struct HomeView: View {
         if appState.sessionId != nil {
             return "Your AI agents are working. Results will appear here when ready."
         }
-        return "Start an analysis from the Profile tab to map your coverage, assess risk, and generate a submission packet."
+        return "Start an analysis below to map your coverage, assess risk, and generate a submission packet."
     }
 
     private struct CardConfig {

@@ -358,6 +358,13 @@ struct CoverageListRow: View {
                         .foregroundStyle(FaroPalette.ink.opacity(0.5))
                         .lineLimit(1)
                 }
+
+                if !option.resolvedCarriers.isEmpty {
+                    Text("e.g. \(option.resolvedCarriers.joined(separator: ", "))")
+                        .font(FaroType.caption2())
+                        .foregroundStyle(FaroPalette.purpleDeep.opacity(0.6))
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
@@ -498,6 +505,29 @@ struct CoverageDetailSheet: View {
                     }
                 }
 
+                if !option.resolvedCarriers.isEmpty {
+                    VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                        Text("Sample Carriers")
+                            .font(FaroType.headline())
+                            .foregroundStyle(FaroPalette.ink)
+
+                        FlowLayout(spacing: 8) {
+                            ForEach(option.resolvedCarriers, id: \.self) { carrier in
+                                Text(carrier)
+                                    .font(FaroType.caption(.semibold))
+                                    .foregroundStyle(FaroPalette.purpleDeep)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(FaroPalette.purpleDeep.opacity(0.08))
+                                    .clipShape(Capsule())
+                                    .overlay {
+                                        Capsule().strokeBorder(FaroPalette.purpleDeep.opacity(0.2), lineWidth: 0.5)
+                                    }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(minLength: 40)
             }
             .padding(FaroSpacing.md)
@@ -605,10 +635,10 @@ extension CoverageOption: Hashable {
         CoverageDashboardView(
             results: ResultsResponse(
                 coverageOptions: [
-                    CoverageOption(type: "General Liability", description: "Covers third-party bodily injury and property damage claims.", estimatedPremiumLow: 800, estimatedPremiumHigh: 1500, confidence: 0.95, category: .required, triggerEvent: nil),
-                    CoverageOption(type: "Workers Compensation", description: "Required by NJ law for any business with employees.", estimatedPremiumLow: 2000, estimatedPremiumHigh: 4000, confidence: 0.99, category: .required, triggerEvent: nil),
-                    CoverageOption(type: "Cyber Liability", description: "Covers data breaches, ransomware, and regulatory fines.", estimatedPremiumLow: 1200, estimatedPremiumHigh: 3000, confidence: 0.80, category: .recommended, triggerEvent: nil),
-                    CoverageOption(type: "EPLI", description: "Protects against wrongful termination, discrimination, and harassment claims.", estimatedPremiumLow: 1500, estimatedPremiumHigh: 4000, confidence: 0.72, category: .projected, triggerEvent: "Trigger: Headcount projected to exceed 15 employees"),
+                    CoverageOption(type: "General Liability", description: "Covers third-party bodily injury and property damage claims.", estimatedPremiumLow: 800, estimatedPremiumHigh: 1500, confidence: 0.95, category: .required, triggerEvent: nil, exampleCarriers: nil),
+                    CoverageOption(type: "Workers Compensation", description: "Required by NJ law for any business with employees.", estimatedPremiumLow: 2000, estimatedPremiumHigh: 4000, confidence: 0.99, category: .required, triggerEvent: nil, exampleCarriers: nil),
+                    CoverageOption(type: "Cyber Liability", description: "Covers data breaches, ransomware, and regulatory fines.", estimatedPremiumLow: 1200, estimatedPremiumHigh: 3000, confidence: 0.80, category: .recommended, triggerEvent: nil, exampleCarriers: nil),
+                    CoverageOption(type: "EPLI", description: "Protects against wrongful termination, discrimination, and harassment claims.", estimatedPremiumLow: 1500, estimatedPremiumHigh: 4000, confidence: 0.72, category: .projected, triggerEvent: "Trigger: Headcount projected to exceed 15 employees", exampleCarriers: nil),
                 ],
                 submissionPacketUrl: "",
                 voiceSummaryUrl: "",
