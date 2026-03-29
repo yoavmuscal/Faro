@@ -142,13 +142,16 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     }
 
     private func sendConversationInitiationClientData() async throws {
+        // ElevenLabs source_info.source is a strict server-side enum:
+        // "twilio"|"python_sdk"|"swift_sdk"|"react_sdk"|"js_sdk"|"web"|"custom"
+        // Sending anything outside that list (e.g. "ios") causes "Invalid message received".
         let payload: [String: Any] = [
             "type": "conversation_initiation_client_data",
             "custom_llm_extra_body": [:] as [String: Any],
             "conversation_config_override": [:] as [String: Any],
             "dynamic_variables": [:] as [String: Any],
             "source_info": [
-                "source": "ios",
+                "source": "custom",
                 "version": Self.appVersion,
             ],
         ]
