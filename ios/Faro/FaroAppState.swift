@@ -17,13 +17,23 @@ final class FaroAppState: ObservableObject {
         didSet { Self.defaults.set(isOnboarded, forKey: "faro_isOnboarded") }
     }
 
+    @Published var userProfilePhotoData: Data? {
+        didSet {
+            if let data = userProfilePhotoData {
+                Self.defaults.set(data, forKey: "faro_profilePhoto")
+            } else {
+                Self.defaults.removeObject(forKey: "faro_profilePhoto")
+            }
+        }
+    }
+
     @Published var sessionId: String?
     @Published var businessName: String = ""
     @Published var contactFirstName: String = ""
     @Published var contactMiddleName: String = ""
     @Published var contactLastName: String = ""
     @Published var results: ResultsResponse?
-    @Published var selectedSectionRawValue: String = "analyze"
+    @Published var selectedSectionRawValue: String = "home"
 
     var isSignedIn: Bool {
         isOnboarded && !userFirstName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -55,6 +65,7 @@ final class FaroAppState: ObservableObject {
         userLastName = Self.defaults.string(forKey: "faro_userLastName") ?? ""
         userEmail = Self.defaults.string(forKey: "faro_userEmail") ?? ""
         isOnboarded = Self.defaults.bool(forKey: "faro_isOnboarded")
+        userProfilePhotoData = Self.defaults.data(forKey: "faro_profilePhoto")
     }
 
     func signIn(firstName: String, lastName: String, email: String) {
@@ -75,7 +86,7 @@ final class FaroAppState: ObservableObject {
         contactMiddleName = ""
         contactLastName = ""
         results = nil
-        selectedSectionRawValue = "analyze"
+        selectedSectionRawValue = "home"
         WidgetDataWriter.clear()
     }
 
@@ -83,7 +94,7 @@ final class FaroAppState: ObservableObject {
         self.sessionId = sessionId
         self.businessName = businessName
         self.results = nil
-        self.selectedSectionRawValue = "analyze"
+        self.selectedSectionRawValue = "home"
         WidgetDataWriter.beginAnalysis(businessName: businessName)
     }
 
@@ -94,10 +105,15 @@ final class FaroAppState: ObservableObject {
     }
 
     func openSection(_ rawValue: String) {
-        // Legacy widget/deep links used "summary"; summary lives on Coverage now.
-        if rawValue == "summary" {
+        // Migrate legacy raw values and widget/deep-link aliases
+        switch rawValue {
+        case "summary", "coverage":
             selectedSectionRawValue = "coverage"
-        } else {
+        case "analyze", "home":
+            selectedSectionRawValue = "home"
+        case "settings", "profile":
+            selectedSectionRawValue = "profile"
+        default:
             selectedSectionRawValue = rawValue
         }
     }

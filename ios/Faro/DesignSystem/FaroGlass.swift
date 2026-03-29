@@ -1,30 +1,79 @@
 import SwiftUI
 
-/// Elevated card surfaces using semantic `FaroPalette.surface` (no translucent grey materials).
+// MARK: - Glass Card (translucent, frosted)
+
 struct FaroGlassCard: ViewModifier {
     var cornerRadius: CGFloat = FaroRadius.lg
 
     func body(content: Content) -> some View {
         content
-            .background(
+            .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(FaroPalette.surface)
-            )
-            .overlay(
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(FaroPalette.surface.opacity(0.45))
+                    }
+            }
+            .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(FaroPalette.glassStroke.opacity(0.55), lineWidth: 1)
-            )
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(0.35), FaroPalette.glassStroke.opacity(0.2)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
+            }
     }
 }
+
+// MARK: - Glass Capsule (pill shape, translucent)
 
 struct FaroGlassCapsule: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(Capsule(style: .continuous).fill(FaroPalette.surface))
-            .overlay(
+            .background {
                 Capsule(style: .continuous)
-                    .strokeBorder(FaroPalette.glassStroke.opacity(0.55), lineWidth: 1)
-            )
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .fill(FaroPalette.surface.opacity(0.45))
+                    }
+            }
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(0.3), FaroPalette.glassStroke.opacity(0.2)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
+            }
+    }
+}
+
+// MARK: - Tinted Pill (status badges)
+
+struct FaroPillTag: ViewModifier {
+    var color: Color
+    var intensity: Double = 0.12
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(color.opacity(intensity))
+            }
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(color.opacity(0.25), lineWidth: 0.5)
+            }
     }
 }
 
@@ -37,18 +86,33 @@ extension View {
         modifier(FaroGlassCapsule())
     }
 
-    /// Full-screen or section background: cream/dark base with a subtle purple wash.
+    func faroPillTag(color: Color, intensity: Double = 0.12) -> some View {
+        modifier(FaroPillTag(color: color, intensity: intensity))
+    }
+
+    /// Full-screen or section background: cream/dark base with a layered purple wash.
     func faroCanvasBackground() -> some View {
         self.background {
             ZStack {
                 FaroPalette.background.ignoresSafeArea()
                 LinearGradient(
                     colors: [
-                        FaroPalette.purple.opacity(0.08),
+                        FaroPalette.purple.opacity(0.1),
+                        FaroPalette.purpleDeep.opacity(0.04),
                         FaroPalette.background.opacity(0.001),
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                RadialGradient(
+                    colors: [
+                        FaroPalette.purpleDeep.opacity(0.06),
+                        Color.clear,
+                    ],
+                    center: .topTrailing,
+                    startRadius: 0,
+                    endRadius: 400
                 )
                 .ignoresSafeArea()
             }
@@ -65,7 +129,7 @@ struct FaroGradientButtonStyle: ButtonStyle {
         configuration.label
             .foregroundStyle(.white)
             .background {
-                RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
+                Capsule(style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: isEnabled
@@ -78,7 +142,7 @@ struct FaroGradientButtonStyle: ButtonStyle {
             }
             .overlay {
                 if isEnabled {
-                    RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
+                    Capsule(style: .continuous)
                         .strokeBorder(
                             LinearGradient(
                                 colors: [.white.opacity(0.25), .white.opacity(0.05)],
@@ -105,7 +169,7 @@ extension ButtonStyle where Self == FaroGradientButtonStyle {
     static var faroGradient: FaroGradientButtonStyle { .init() }
 }
 
-// MARK: - Scale Press Button Style (for interactive cards)
+// MARK: - Scale Press Button Style
 
 struct FaroScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
