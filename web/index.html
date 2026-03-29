@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Faro — Commercial Insurance, Reimagined</title>
+  <meta name="description" content="Describe your business in plain English. Faro's AI builds your risk profile, recommends coverage, and generates a carrier-ready submission — in under two minutes.">
+  <meta property="og:title" content="Faro — Commercial Insurance, Reimagined">
+  <meta property="og:description" content="Commercial insurance in under two minutes. Powered by AI.">
+  <meta property="og:image" content="assets/app-icon.png">
+  <meta name="theme-color" content="#0E0B14">
+  <link rel="icon" type="image/png" href="assets/app-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+
+    :root {
+      --purple: #9B7FCC;
+      --purple-deep: #6E5B9A;
+      --purple-glow: rgba(155, 127, 204, 0.15);
+      --cream: #F5F0E6;
+      --cream-dim: rgba(245, 240, 230, 0.7);
+      --cream-muted: rgba(245, 240, 230, 0.5);
+      --cream-subtle: rgba(245, 240, 230, 0.3);
+      --cream-faint: rgba(245, 240, 230, 0.08);
+      --bg: #0E0B14;
+      --surface: rgba(245, 240, 230, 0.04);
+      --border: rgba(245, 240, 230, 0.08);
+      --border-hover: rgba(245, 240, 230, 0.14);
+      --sans: 'Inter', -apple-system, system-ui, sans-serif;
+      --serif: 'DM Serif Display', 'Georgia', serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--cream);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    /* ============ Ambient background ============ */
+    .ambient {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(100px);
+      opacity: 0.35;
+      animation: drift 20s ease-in-out infinite alternate;
+    }
+
+    .orb-1 {
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, #6E5B9A, transparent 70%);
+      top: -10%; left: -10%;
+      animation-duration: 22s;
+    }
+
+    .orb-2 {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, #9B7FCC, transparent 70%);
+      top: 30%; right: -15%;
+      animation-duration: 18s;
+      animation-delay: -5s;
+    }
+
+    .orb-3 {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, #C4B5E0, transparent 70%);
+      bottom: -5%; left: 30%;
+      animation-duration: 25s;
+      animation-delay: -10s;
+    }
+
+    @keyframes drift {
+      0% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(40px, -30px) scale(1.05); }
+      66% { transform: translate(-20px, 20px) scale(0.95); }
+      100% { transform: translate(30px, -10px) scale(1.02); }
+    }
+
+    /* ============ Grain ============ */
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.4;
+      z-index: 9999;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    }
+
+    /* ============ Nav ============ */
+    nav {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 32px;
+      padding: 10px 10px 10px 20px;
+      background: rgba(14, 11, 20, 0.6);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      width: max-content;
+      max-width: calc(100% - 32px);
+    }
+
+    .nav-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-left img { width: 28px; height: 28px; border-radius: 7px; }
+
+    .nav-left span {
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-mid {
+      display: flex;
+      gap: 28px;
+    }
+
+    .nav-mid a {
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--cream-muted);
+      transition: color 0.2s;
+    }
+
+    .nav-mid a:hover { color: var(--cream); }
+
+    .nav-cta {
+      background: var(--cream);
+      color: var(--bg);
+      padding: 8px 20px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+
+    .nav-cta:hover { opacity: 0.88; }
+
+    /* ============ Hero ============ */
+    .hero {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 160px 24px 120px;
+    }
+
+    .hero-icon-wrap {
+      position: relative;
+      margin-bottom: 48px;
+    }
+
+    .hero-icon {
+      width: 96px;
+      height: 96px;
+      border-radius: 24px;
+      position: relative;
+      z-index: 2;
+      box-shadow:
+        0 0 0 1px rgba(155, 127, 204, 0.1),
+        0 8px 40px rgba(110, 91, 154, 0.25),
+        0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .hero-icon-ring {
+      position: absolute;
+      inset: -20px;
+      border-radius: 34px;
+      border: 1px solid rgba(155, 127, 204, 0.12);
+      animation: ring-pulse 4s ease-in-out infinite;
+    }
+
+    .hero-icon-ring:nth-child(3) {
+      inset: -44px;
+      border-radius: 48px;
+      border-color: rgba(155, 127, 204, 0.06);
+      animation-delay: 1s;
+    }
+
+    @keyframes ring-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.03); }
+    }
+
+    .hero h1 {
+      font-family: var(--serif);
+      font-size: clamp(2.8rem, 7vw, 5rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.05;
+      margin-bottom: 24px;
+      max-width: 700px;
+    }
+
+    .hero h1 em {
+      font-style: italic;
+      background: linear-gradient(135deg, var(--purple) 0%, #D4C4F0 50%, var(--purple) 100%);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 6s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .hero .subtitle {
+      font-size: clamp(0.95rem, 2vw, 1.1rem);
+      color: var(--cream-muted);
+      line-height: 1.7;
+      max-width: 440px;
+      margin-bottom: 44px;
+    }
+
+    /* ============ Waitlist ============ */
+    .waitlist-form {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      max-width: 400px;
+      padding: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      transition: border-color 0.3s;
+    }
+
+    .waitlist-form:focus-within { border-color: var(--border-hover); }
+
+    .waitlist-form input {
+      flex: 1;
+      padding: 12px 14px;
+      background: transparent;
+      border: none;
+      font-size: 0.95rem;
+      font-family: var(--sans);
+      color: var(--cream);
+      outline: none;
+    }
+
+    .waitlist-form input::placeholder { color: var(--cream-subtle); }
+
+    .waitlist-form button {
+      padding: 12px 24px;
+      background: var(--cream);
+      color: var(--bg);
+      border: none;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      font-family: var(--sans);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    .waitlist-form button:hover { opacity: 0.88; transform: scale(0.98); }
+
+    .waitlist-success {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--purple);
+      padding: 12px 0;
+    }
+
+    .hero-note {
+      margin-top: 16px;
+      font-size: 0.78rem;
+      color: var(--cream-subtle);
+      letter-spacing: 0.02em;
+    }
+
+    /* ============ Bento grid ============ */
+    .bento-section {
+      position: relative;
+      z-index: 1;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 24px 120px;
+    }
+
+    .bento-header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+
+    .bento-header .eyebrow {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--purple);
+      padding: 6px 16px;
+      border: 1px solid rgba(155, 127, 204, 0.15);
+      border-radius: 999px;
+      margin-bottom: 20px;
+    }
+
+    .bento-header h2 {
+      font-family: var(--serif);
+      font-size: clamp(1.8rem, 4.5vw, 2.8rem);
+      font-weight: 400;
+      letter-spacing: -0.015em;
+      line-height: 1.1;
+    }
+
+    .bento {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-auto-rows: auto;
+      gap: 16px;
+    }
+
+    .bento-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px 28px;
+      transition: border-color 0.3s, transform 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .bento-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+    }
+
+    .bento-card.span-2 { grid-column: span 2; }
+    .bento-card.span-full { grid-column: span 3; }
+
+    .bento-card .card-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--purple);
+      margin-bottom: 14px;
+    }
+
+    .bento-card h3 {
+      font-family: var(--serif);
+      font-size: 1.35rem;
+      font-weight: 400;
+      letter-spacing: -0.01em;
+      margin-bottom: 10px;
+      line-height: 1.25;
+    }
+
+    .bento-card p {
+      font-size: 0.9rem;
+      color: var(--cream-muted);
+      line-height: 1.6;
+    }
+
+    /* Pipeline visual inside the wide card */
+    .pipeline-visual {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin-top: 28px;
+    }
+
+    .pipe-node {
+      flex: 1;
+      text-align: center;
+      position: relative;
+    }
+
+    .pipe-dot {
+      width: 10px;
+      height: 10px;
+      background: var(--purple);
+      border-radius: 50%;
+      margin: 0 auto 10px;
+      box-shadow: 0 0 12px rgba(155, 127, 204, 0.4);
+    }
+
+    .pipe-line {
+      position: absolute;
+      top: 5px;
+      left: calc(50% + 8px);
+      right: calc(-50% + 8px);
+      height: 1px;
+      background: linear-gradient(to right, var(--purple), rgba(155, 127, 204, 0.2));
+    }
+
+    .pipe-node:last-child .pipe-line { display: none; }
+
+    .pipe-node span {
+      font-size: 0.75rem;
+      color: var(--cream-muted);
+      font-weight: 500;
+    }
+
+    /* Stats inside a card */
+    .stat-row {
+      display: flex;
+      gap: 40px;
+      margin-top: 24px;
+    }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-value {
+      font-family: var(--serif);
+      font-size: 2rem;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 0.78rem;
+      color: var(--cream-subtle);
+    }
+
+    /* ============ Bottom CTA ============ */
+    .bottom-cta {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: 80px 24px 140px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .bottom-cta h2 {
+      font-family: var(--serif);
+      font-size: clamp(1.5rem, 3.5vw, 2.2rem);
+      font-weight: 400;
+      letter-spacing: -0.01em;
+      margin-bottom: 12px;
+    }
+
+    .bottom-cta p {
+      font-size: 0.92rem;
+      color: var(--cream-muted);
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+
+    .bottom-cta .waitlist-form { margin: 0 auto; }
+
+    /* ============ Footer ============ */
+    footer {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: 32px 24px;
+      font-size: 0.78rem;
+      color: var(--cream-subtle);
+    }
+
+    /* ============ Animations ============ */
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .d1 { transition-delay: 0.05s; }
+    .d2 { transition-delay: 0.1s; }
+    .d3 { transition-delay: 0.15s; }
+    .d4 { transition-delay: 0.2s; }
+
+    /* ============ Responsive ============ */
+    @media (max-width: 768px) {
+      .bento {
+        grid-template-columns: 1fr;
+      }
+      .bento-card.span-2,
+      .bento-card.span-full {
+        grid-column: span 1;
+      }
+      .pipeline-visual {
+        flex-direction: column;
+        gap: 16px;
+        align-items: flex-start;
+      }
+      .pipe-line { display: none; }
+      .pipe-node { text-align: left; display: flex; align-items: center; gap: 12px; }
+      .pipe-dot { margin: 0; flex-shrink: 0; }
+      .stat-row { gap: 24px; }
+    }
+
+    @media (max-width: 640px) {
+      nav { gap: 16px; }
+      .nav-mid { display: none; }
+      .hero { padding: 140px 20px 80px; }
+      .hero-icon { width: 76px; height: 76px; border-radius: 20px; }
+      .hero-icon-ring { inset: -16px; border-radius: 28px; }
+      .hero-icon-ring:nth-child(3) { inset: -34px; border-radius: 40px; }
+      .bento-section { padding: 20px 16px 80px; }
+      .bento { gap: 12px; }
+      .bento-card { padding: 24px 20px; }
+      .waitlist-form { flex-direction: column; }
+      .waitlist-form button { width: 100%; }
+      .bottom-cta { padding: 60px 20px 100px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient glow -->
+  <div class="ambient">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- Nav -->
+  <nav>
+    <a href="#" class="nav-left">
+      <img src="assets/app-icon.png" alt="Faro">
+      <span>Faro</span>
+    </a>
+    <div class="nav-mid">
+      <a href="#how">How it works</a>
+      <a href="#why">Why Faro</a>
+    </div>
+    <a href="#waitlist" class="nav-cta">Join waitlist</a>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-icon-wrap reveal">
+      <img src="assets/app-icon.png" alt="Faro" class="hero-icon">
+      <div class="hero-icon-ring"></div>
+      <div class="hero-icon-ring"></div>
+    </div>
+    <h1 class="reveal d1">Commercial insurance,<br><em>reimagined</em></h1>
+    <p class="subtitle reveal d2">Describe your business in plain English. Faro handles the rest&nbsp;&mdash; risk profile, coverage, and a carrier-ready submission. Under two&nbsp;minutes.</p>
+    <form class="waitlist-form reveal d3" id="waitlist" onsubmit="return handleWaitlist(this)">
+      <input type="email" placeholder="you@company.com" required autocomplete="email" aria-label="Email address">
+      <button type="submit">Get early access</button>
+    </form>
+    <div class="waitlist-success" id="success-hero">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M5 9.5l2.5 2.5L13 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      You're on the list.
+    </div>
+    <p class="hero-note reveal d4">Coming soon to iOS &middot; No credit card required</p>
+  </section>
+
+  <!-- Bento: How it works -->
+  <section class="bento-section" id="how">
+    <div class="bento-header">
+      <div class="eyebrow reveal">How it works</div>
+      <h2 class="reveal d1">What a broker does in a week,<br>Faro does while you watch</h2>
+    </div>
+
+    <div class="bento">
+      <!-- Wide pipeline card -->
+      <div class="bento-card span-full reveal">
+        <div class="card-label">The Pipeline</div>
+        <h3>Four autonomous steps. One conversation.</h3>
+        <p>After you describe your business, Faro's AI pipeline runs four specialized agents in sequence — no manual input required between steps.</p>
+        <div class="pipeline-visual">
+          <div class="pipe-node"><div class="pipe-dot"></div><div class="pipe-line"></div><span>Risk Profiler</span></div>
+          <div class="pipe-node"><div class="pipe-dot"></div><div class="pipe-line"></div><span>Coverage Mapper</span></div>
+          <div class="pipe-node"><div class="pipe-dot"></div><div class="pipe-line"></div><span>Submission Builder</span></div>
+          <div class="pipe-node"><div class="pipe-dot"></div><span>Summary</span></div>
+        </div>
+      </div>
+
+      <!-- Speed card -->
+      <div class="bento-card reveal">
+        <div class="card-label">Speed</div>
+        <h3>Two minutes, not two&nbsp;weeks</h3>
+        <p>Traditional brokers take 5–7 business days. Faro delivers before your coffee gets cold.</p>
+        <div class="stat-row">
+          <div class="stat">
+            <span class="stat-value">&lt;2m</span>
+            <span class="stat-label">With Faro</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">5–7d</span>
+            <span class="stat-label">Traditional broker</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Output card -->
+      <div class="bento-card span-2 reveal">
+        <div class="card-label">Output</div>
+        <h3>Carrier-ready from day one</h3>
+        <p>Faro doesn't just recommend coverage — it generates a structured submission packet that underwriters can actually work with. Export as PDF, share via AirDrop, or listen to a plain-English summary read aloud.</p>
+      </div>
+
+      <!-- Native card -->
+      <div class="bento-card span-2 reveal">
+        <div class="card-label">Experience</div>
+        <h3>Native iOS, not a web&nbsp;form</h3>
+        <p>A real app built with SwiftUI. Home screen widgets, native PDF export, voice playback — the kind of experience that only works when you build for the platform.</p>
+      </div>
+
+      <!-- Growth card -->
+      <div class="bento-card reveal">
+        <div class="card-label">Growth</div>
+        <h3>Coverage that scales with&nbsp;you</h3>
+        <p>Faro maps projected insurance needs based on your growth triggers, so you're always prepared for what comes next.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Bottom CTA -->
+  <section class="bottom-cta" id="cta">
+    <h2 class="reveal">Get early access</h2>
+    <p class="reveal d1">Join the waitlist. Be first to know when Faro launches on the App&nbsp;Store.</p>
+    <form class="waitlist-form reveal d2" onsubmit="return handleWaitlist(this)">
+      <input type="email" placeholder="you@company.com" required autocomplete="email" aria-label="Email address">
+      <button type="submit">Join waitlist</button>
+    </form>
+    <div class="waitlist-success" id="success-bottom">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M5 9.5l2.5 2.5L13 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      You're on the list.
+    </div>
+  </section>
+
+  <footer>
+    <p>&copy; 2026 Faro</p>
+  </footer>
+
+  <script>
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }),
+      { threshold: 0.1 }
+    );
+    document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+    function handleWaitlist(form) {
+      const email = form.querySelector('input').value;
+      const list = JSON.parse(localStorage.getItem('faro_waitlist') || '[]');
+      if (!list.includes(email)) {
+        list.push(email);
+        localStorage.setItem('faro_waitlist', JSON.stringify(list));
+      }
+      form.style.display = 'none';
+      form.nextElementSibling.style.display = 'flex';
+      return false;
+    }
+  </script>
+</body>
+</html>
