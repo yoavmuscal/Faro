@@ -405,6 +405,7 @@ class ResultsResponse(FaroBaseModel):
     risk_profile: Optional[RiskProfile] = None
     submission_packet: Optional[SubmissionPacket] = None
     plain_english_summary: Optional[str] = None
+    next_renewal_days: Optional[int] = None
 
 
 # ── Status (widget) ───────────────────────────────────────────────────────────
@@ -992,4 +993,5 @@ def build_results_response(
         risk_profile=risk_profile,
         submission_packet=submission_packet,
         plain_english_summary=_clean_string(plain_english_summary),
+        next_renewal_days=None,
     )

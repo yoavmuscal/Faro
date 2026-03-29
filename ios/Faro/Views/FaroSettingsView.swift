@@ -1,6 +1,64 @@
 import SwiftUI
 import PhotosUI
 
+/// `PhotosPicker`'s label builder is not main-actor-isolated; keeping this separate avoids
+/// capturing `@MainActor`-isolated members of the parent settings view in that closure.
+private struct ProfileAvatarPhotoPicker: View {
+    @Binding var selectedPhoto: PhotosPickerItem?
+    /// Snapshot from parent `@State`; avoids referencing `@Binding` inside `PhotosPicker`'s label closure.
+    let isLoadingPhoto: Bool
+    let photoData: Data?
+    let initials: String
+
+    var body: some View {
+        PhotosPicker(
+            selection: $selectedPhoto,
+            matching: .images,
+            photoLibrary: .shared()
+        ) {
+            ZStack(alignment: .bottomTrailing) {
+                Group {
+                    if let data = photoData,
+                       let uiImage = UIImage(data: data) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFill()
+                            .clipShape(Circle())
+                            .overlay { Circle().strokeBorder(.white.opacity(0.3), lineWidth: 2) }
+                    } else {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [FaroPalette.purpleDeep, FaroPalette.purple],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .overlay {
+                                Text(initials)
+                                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                            }
+                            .overlay { Circle().strokeBorder(.white.opacity(0.2), lineWidth: 2) }
+                    }
+                }
+                .frame(width: 96, height: 96)
+
+                ZStack {
+                    Circle()
+                        .fill(FaroPalette.purpleDeep)
+                        .frame(width: 30, height: 30)
+                    Image(systemName: isLoadingPhoto ? "arrow.2.circlepath" : "camera.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .shadow(color: FaroPalette.purpleDeep.opacity(0.4), radius: 6, y: 2)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct FaroSettingsView: View {
     @EnvironmentObject private var appState: FaroAppState
     @EnvironmentObject private var authManager: AuthManager
@@ -54,28 +112,12 @@ struct FaroSettingsView: View {
 
     private var profileHero: some View {
         VStack(spacing: FaroSpacing.md) {
-            // Avatar with photo picker
-            PhotosPicker(
-                selection: $selectedPhoto,
-                matching: .images,
-                photoLibrary: .shared()
-            ) {
-                ZStack(alignment: .bottomTrailing) {
-                    avatarCircle
-                        .frame(width: 96, height: 96)
-
-                    ZStack {
-                        Circle()
-                            .fill(FaroPalette.purpleDeep)
-                            .frame(width: 30, height: 30)
-                        Image(systemName: isLoadingPhoto ? "arrow.2.circlepath" : "camera.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .shadow(color: FaroPalette.purpleDeep.opacity(0.4), radius: 6, y: 2)
-                }
-            }
-            .buttonStyle(.plain)
+            ProfileAvatarPhotoPicker(
+                selectedPhoto: $selectedPhoto,
+                isLoadingPhoto: isLoadingPhoto,
+                photoData: appState.userProfilePhotoData,
+                initials: initials
+            )
 
             VStack(spacing: 4) {
                 Text("\(appState.userFirstName) \(appState.userLastName)")
@@ -92,33 +134,6 @@ struct FaroSettingsView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, FaroSpacing.lg)
         .faroGlassCard(cornerRadius: FaroRadius.xl)
-    }
-
-    @ViewBuilder
-    private var avatarCircle: some View {
-        if let data = appState.userProfilePhotoData,
-           let uiImage = UIImage(data: data) {
-            Image(uiImage: uiImage)
-                .resizable()
-                .scaledToFill()
-                .clipShape(Circle())
-                .overlay { Circle().strokeBorder(.white.opacity(0.3), lineWidth: 2) }
-        } else {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [FaroPalette.purpleDeep, FaroPalette.purple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay {
-                    Text(initials)
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                }
-                .overlay { Circle().strokeBorder(.white.opacity(0.2), lineWidth: 2) }
-        }
     }
 
     // MARK: - Auth0
@@ -355,6 +370,7 @@ struct FaroSettingsView: View {
         return "\(first)\(last)"
     }
 
+    @MainActor
     private func loadProfilePhoto(from item: PhotosPickerItem?) async {
         guard let item else { return }
         isLoadingPhoto = true

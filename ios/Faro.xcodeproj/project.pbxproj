@@ -35,6 +35,7 @@
 		B000000000000000000000017 /* ActivityShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000018 /* ActivityShareSheet.swift */; };
 		F10000000000000000000001 /* FaroWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000012 /* FaroWidget.swift */; };
 		F10000000000000000000002 /* FaroWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000013 /* FaroWidgetBundle.swift */; };
+		F10000000000000000000004 /* FaroWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000017 /* FaroWidgetIntent.swift */; };
 		F10000000000000000000003 /* FaroWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F10000000000000000000016 /* FaroWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A90000000000000000000003 /* Auth0 in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* Auth0 */; };
 		A90000000000000000000004 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90000000000000000000006 /* AuthManager.swift */; };
@@ -98,6 +99,7 @@
 		F10000000000000000000011 /* FaroIOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FaroIOS.entitlements; sourceTree = "<group>"; };
 		F10000000000000000000012 /* FaroWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroWidget.swift; sourceTree = "<group>"; };
 		F10000000000000000000013 /* FaroWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroWidgetBundle.swift; sourceTree = "<group>"; };
+		F10000000000000000000017 /* FaroWidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroWidgetIntent.swift; sourceTree = "<group>"; };
 		F10000000000000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F10000000000000000000015 /* FaroWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FaroWidget.entitlements; sourceTree = "<group>"; };
 		F10000000000000000000016 /* FaroWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FaroWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -233,6 +235,7 @@
 			children = (
 				F10000000000000000000012 /* FaroWidget.swift */,
 				F10000000000000000000013 /* FaroWidgetBundle.swift */,
+				F10000000000000000000017 /* FaroWidgetIntent.swift */,
 				F10000000000000000000014 /* Info.plist */,
 				F10000000000000000000015 /* FaroWidget.entitlements */,
 			);
@@ -380,6 +383,7 @@
 			files = (
 				F10000000000000000000001 /* FaroWidget.swift in Sources */,
 				F10000000000000000000002 /* FaroWidgetBundle.swift in Sources */,
+				F10000000000000000000004 /* FaroWidgetIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

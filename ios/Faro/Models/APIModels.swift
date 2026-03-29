@@ -155,6 +155,8 @@ struct ResultsResponse: Codable {
     let riskProfile: RiskProfile?
     let submissionPacket: SubmissionPacket?
     let plainEnglishSummary: String?
+    /// Days until next policy renewal when provided by the API (used for widget renewal state).
+    let nextRenewalDays: Int?
 
     enum CodingKeys: String, CodingKey {
         case coverageOptions = "coverage_options"
@@ -163,6 +165,25 @@ struct ResultsResponse: Codable {
         case riskProfile = "risk_profile"
         case submissionPacket = "submission_packet"
         case plainEnglishSummary = "plain_english_summary"
+        case nextRenewalDays = "next_renewal_days"
+    }
+
+    init(
+        coverageOptions: [CoverageOption],
+        submissionPacketUrl: String,
+        voiceSummaryUrl: String,
+        riskProfile: RiskProfile?,
+        submissionPacket: SubmissionPacket?,
+        plainEnglishSummary: String?,
+        nextRenewalDays: Int? = nil
+    ) {
+        self.coverageOptions = coverageOptions
+        self.submissionPacketUrl = submissionPacketUrl
+        self.voiceSummaryUrl = voiceSummaryUrl
+        self.riskProfile = riskProfile
+        self.submissionPacket = submissionPacket
+        self.plainEnglishSummary = plainEnglishSummary
+        self.nextRenewalDays = nextRenewalDays
     }
 }
 
@@ -421,6 +442,7 @@ extension ResultsResponse {
         riskProfile = try? container.decodeIfPresent(RiskProfile.self, forKey: .riskProfile)
         submissionPacket = try? container.decodeIfPresent(SubmissionPacket.self, forKey: .submissionPacket)
         plainEnglishSummary = container.decodeFlexibleStringIfPresent(forKey: .plainEnglishSummary)
+        nextRenewalDays = container.decodeFlexibleIntIfPresent(forKey: .nextRenewalDays)
     }
 }
 

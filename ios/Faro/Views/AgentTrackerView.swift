@@ -9,6 +9,7 @@ struct AgentTrackerView: View {
     @StateObject private var ws: WebSocketService
     @State private var isLoadingResults = false
     @State private var errorMessage: String?
+    @State private var widgetUpdateTask: Task<Void, Never>?
 
     private let allSteps: [AgentStep] = [.riskProfiler, .coverageMapper, .submissionBuilder, .explainer]
 
@@ -28,6 +29,14 @@ struct AgentTrackerView: View {
 
     private var completedCount: Int {
         ws.stepUpdates.filter({ $0.status == .complete }).count
+    }
+
+    /// Stable fingerprint so we catch status changes, not just array count.
+    private var pipelineFingerprint: String {
+        allSteps.map { step in
+            let s = ws.stepUpdates.first(where: { $0.step == step })?.status.rawValue ?? "none"
+            return "\(step.rawValue):\(s)"
+        }.joined(separator: "|")
     }
 
     var body: some View {
@@ -122,7 +131,59 @@ struct AgentTrackerView: View {
                 ws.connect(accessToken: token)
             }
         }
-        .onDisappear { ws.disconnect() }
+        .onDisappear {
+            ws.disconnect()
+            widgetUpdateTask?.cancel()
+            widgetUpdateTask = nil
+        }
+        .onChange(of: pipelineFingerprint) { _, _ in
+            guard !isComplete else { return }
+            scheduleWidgetPipelineUpdate()
+        }
+        .onChange(of: isComplete) { _, complete in
+            guard complete else { return }
+            widgetUpdateTask?.cancel()
+            widgetUpdateTask = nil
+            WidgetDataWriter.updatePipelineProgress(
+                businessName: businessName,
+                completedSteps: allSteps.count,
+                totalSteps: allSteps.count,
+                headline: "Analysis complete",
+                message: "Tap to view coverage options"
+            )
+        }
+    }
+
+    private func scheduleWidgetPipelineUpdate() {
+        widgetUpdateTask?.cancel()
+        widgetUpdateTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else { return }
+            WidgetDataWriter.updatePipelineProgress(
+                businessName: businessName,
+                completedSteps: completedCount,
+                totalSteps: allSteps.count,
+                headline: pipelineWidgetHeadline,
+                message: "Faro is reasoning through coverage options"
+            )
+        }
+    }
+
+    private var pipelineWidgetHeadline: String {
+        if let running = allSteps.first(where: { step in
+            ws.stepUpdates.first(where: { $0.step == step })?.status == .running
+        }) {
+            switch running {
+            case .riskProfiler: return "Profiling risk"
+            case .coverageMapper: return "Mapping coverage"
+            case .submissionBuilder: return "Building submission"
+            case .explainer: return "Writing summary"
+            }
+        }
+        if completedCount > 0 {
+            return "Analysis in progress"
+        }
+        return "Analysis in progress"
     }
 
     private func loadResults() async {

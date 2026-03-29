@@ -60,6 +60,53 @@ enum WidgetDataWriter {
         #endif
     }
 
+    /// Updates the shared snapshot while the agent pipeline is running (WebSocket step progress).
+    static func updatePipelineProgress(
+        businessName: String,
+        completedSteps: Int,
+        totalSteps: Int,
+        headline: String,
+        message: String = "Faro is reasoning through coverage options"
+    ) {
+        let trimmed = businessName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = trimmed.isEmpty ? "Your Business" : trimmed
+        let total = max(1, totalSteps)
+        let clamped = min(max(0, completedSteps), total)
+
+        writeSnapshot(
+            WidgetCoverageSnapshot(
+                businessName: displayName,
+                status: .unknown,
+                headline: headline,
+                message: message,
+                isInProgress: true,
+                completedSteps: clamped,
+                totalSteps: total,
+                nextRenewalDays: nil,
+                policyCount: 0,
+                requiredCount: 0,
+                recommendedCount: 0,
+                projectedCount: 0,
+                topCoverageType: nil,
+                nextActionTitle: "Open analysis",
+                destination: .analyze,
+                coverageLines: [],
+                premiumLow: 0,
+                premiumHigh: 0,
+                averageConfidence: 0,
+                updatedAt: Date().timeIntervalSince1970
+            )
+        )
+
+        update(
+            businessName: displayName,
+            status: .unknown,
+            message: headline,
+            nextRenewalDays: nil,
+            policyCount: 0
+        )
+    }
+
     static func beginAnalysis(businessName: String) {
         let trimmedName = businessName.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayName = trimmedName.isEmpty ? "Your Business" : trimmedName
@@ -113,12 +160,16 @@ enum WidgetDataWriter {
         #endif
     }
 
+    private static let renewalSoonMaxDays = 60
+
     /// Call after results are loaded to push data to the widget.
     static func update(from results: ResultsResponse, businessName: String) {
         let policyCount = results.coverageOptions.count
         let requiredCount = results.coverageOptions.filter { $0.category == .required }.count
         let recommendedCount = results.coverageOptions.filter { $0.category == .recommended }.count
         let projectedCount = results.coverageOptions.filter { $0.category == .projected }.count
+        let renewalDays = results.nextRenewalDays
+        let renewalSoon = renewalDays.map { $0 > 0 && $0 <= renewalSoonMaxDays } ?? false
 
         let status: CoverageStatus
         let headline: String
@@ -135,6 +186,12 @@ enum WidgetDataWriter {
                 message = "\(projectedCount) projected protections to plan for"
             }
             nextActionTitle = "Review gaps"
+            destination = .coverage
+        } else if renewalSoon, let days = renewalDays {
+            status = .renewalSoon
+            headline = "Renewal coming up"
+            message = days == 1 ? "Policy renews tomorrow" : "Policy renews in \(days) days"
+            nextActionTitle = "Review coverage"
             destination = .coverage
         } else if requiredCount > 0 {
             status = .healthy
@@ -182,7 +239,7 @@ enum WidgetDataWriter {
                 isInProgress: false,
                 completedSteps: totalPipelineSteps,
                 totalSteps: totalPipelineSteps,
-                nextRenewalDays: nil,
+                nextRenewalDays: renewalDays,
                 policyCount: policyCount,
                 requiredCount: requiredCount,
                 recommendedCount: recommendedCount,
@@ -202,7 +259,7 @@ enum WidgetDataWriter {
             businessName: businessName,
             status: status,
             message: headline,
-            nextRenewalDays: nil,
+            nextRenewalDays: renewalDays,
             policyCount: policyCount
         )
     }

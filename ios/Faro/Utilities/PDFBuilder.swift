@@ -505,7 +505,7 @@ enum PDFBuilder {
             .foregroundColor: PDFTheme.deepPurple,
         ]
         ("Risk posture" as NSString).draw(in: CGRect(x: margin, y: y, width: contentWidth, height: 16), withAttributes: titleAttrs)
-        var yy = y + 18
+        let yy = y + 18
 
         let trackH: CGFloat = 14
         let track = CGRect(x: margin, y: yy, width: contentWidth, height: trackH)
@@ -1250,7 +1250,7 @@ enum PDFBuilder {
             return heightForAttributedString(t, width: textW) + 8
         }()
 
-        var blockH: CGFloat = innerPad + 16 + typeH + 6 + diagRowH + 8 + descHeight + 8 + 16 + triggerExtra + innerPad * 0.5
+        let blockH: CGFloat = innerPad + 16 + typeH + 6 + diagRowH + 8 + descHeight + 8 + 16 + triggerExtra + innerPad * 0.5
 
         ensureSpace(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: blockH + 16)
 

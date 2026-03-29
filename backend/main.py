@@ -7,10 +7,16 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load env before other backend imports so MONGODB_URI, GEMINI_API_KEY, etc. are visible.
+_backend_dir = Path(__file__).resolve().parent
+load_dotenv(_backend_dir / ".env")
+load_dotenv(_backend_dir / ".env.local")
+
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from dotenv import load_dotenv
 
 from auth import ensure_websocket_allowed, require_auth
 
@@ -31,10 +37,6 @@ from agent.pipeline import run_pipeline
 logger = logging.getLogger(__name__)
 
 import agent.elevenlabs_conversation as elevenlabs_conv
-
-# Load backend-local environment variables for local development.
-load_dotenv(Path(__file__).with_name(".env"))
-load_dotenv(Path(__file__).with_name(".env.local"))
 
 
 @asynccontextmanager
