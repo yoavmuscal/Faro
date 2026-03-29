@@ -127,12 +127,26 @@ struct FaroSettingsView: View {
         VStack(alignment: .leading, spacing: FaroSpacing.sm) {
             SectionHeader(title: "Auth0", icon: "person.badge.key.fill", tint: FaroPalette.purpleDeep)
 
+            /// Same codebase can produce different redirect URLs per developer if `PRODUCT_BUNDLE_IDENTIFIER` differs — each URL must be allow-listed in Auth0.
+            if APIConfig.isAuth0Configured, let hint = APIConfig.auth0CallbackURLHint {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("If sign-in works for one device but not another, Auth0 must allow this app’s redirect URL (it depends on Bundle ID). Add it under Allowed Callback URLs and Allowed Logout URLs:")
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(hint)
+                        .font(FaroType.caption(.medium))
+                        .foregroundStyle(FaroPalette.ink.opacity(0.75))
+                        .textSelection(.enabled)
+                }
+            }
+
             if APIConfig.auth0MissingClientIdOnly {
                 Text("AUTH0_CLIENT_ID in Info.plist is empty. Add your Auth0 Native app Client ID or sign-in cannot start.")
                     .font(FaroType.caption())
                     .foregroundStyle(FaroPalette.danger)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Auth0 → Applications → your app: copy Client ID. Allowed Callback and Logout URLs must include the redirect for this bundle, e.g. com.faro.Faro.auth0://\(APIConfig.auth0Domain ?? "YOUR_DOMAIN")/ios/com.faro.Faro/callback")
+                Text("Auth0 → Applications → your app: copy Client ID. Allowed Callback and Logout URLs must include the redirect for this bundle. After Client ID is set, the exact URL appears in this card; the pattern is {bundleId}.auth0://domain/ios/{bundleId}/callback")
                     .font(FaroType.caption())
                     .foregroundStyle(FaroPalette.ink.opacity(0.55))
                     .fixedSize(horizontal: false, vertical: true)
@@ -161,7 +175,9 @@ struct FaroSettingsView: View {
                 }
                 .buttonStyle(.faroGradient)
 
-                Text("Required when the API enforces Auth0 (same AUTH0_DOMAIN and AUTH0_AUDIENCE as backend .env).")
+                Text(APIConfig.isAuth0Required
+                     ? "Required when the API enforces Auth0 (same AUTH0_DOMAIN and AUTH0_AUDIENCE as backend .env)."
+                     : "Optional: sign in if your Faro API expects an Auth0 token.")
                     .font(FaroType.caption())
                     .foregroundStyle(FaroPalette.ink.opacity(0.5))
             }

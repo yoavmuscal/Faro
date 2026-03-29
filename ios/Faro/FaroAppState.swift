@@ -52,10 +52,10 @@ final class FaroAppState: ObservableObject {
         isOnboarded && !userFirstName.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    /// Main tabs: local profile is complete **and** (if Auth0 is in use) the post–sign-in name step has been completed for this account flow.
+    /// Main tabs: local profile is complete **and** (if Auth0 is required) a logged-in session + post–Auth0 profile step.
     func shouldShowMainApp(isAuth0Enabled: Bool, isAuth0LoggedIn: Bool) -> Bool {
         guard isSignedIn else { return false }
-        if isAuth0Enabled {
+        if isAuth0Enabled && APIConfig.isAuth0Required {
             return isAuth0LoggedIn && hasCompletedPostAuth0Profile
         }
         return true
@@ -92,7 +92,7 @@ final class FaroAppState: ObservableObject {
         userProfilePhotoData = Self.defaults.data(forKey: "faro_profilePhoto")
     }
 
-    /// Full sign-in without Auth0 (or legacy). Not used when `shouldShowAuth0InUI` — use ``saveNameBeforeAuth0`` + Auth0 + ``completeSignInAfterAuth0()`` instead.
+    /// Full sign-in without Auth0 (or when Auth0 is optional). When Auth0 is required, use ``saveNameBeforeAuth0`` + Auth0 + ``completeSignInAfterAuth0()`` instead.
     func signIn(firstName: String, lastName: String, email: String) {
         userFirstName = firstName
         userLastName = lastName
@@ -110,7 +110,7 @@ final class FaroAppState: ObservableObject {
         hasSubmittedNameBeforeAuth0 = true
     }
 
-    /// Step 2: call after Auth0 reports a valid session.
+    /// Step 2: call after Auth0 reports a valid session (or when Auth0 is optional and we finish onboarding without it).
     func completeSignInAfterAuth0() {
         guard APIConfig.shouldShowAuth0InUI else { return }
         guard hasSubmittedNameBeforeAuth0 else { return }
@@ -121,7 +121,7 @@ final class FaroAppState: ObservableObject {
 
     /// Clears stale UserDefaults before the user types their name (Auth0 flow, first step only).
     func resetProfileForManualNameEntryIfNeeded() {
-        guard APIConfig.shouldShowAuth0InUI else { return }
+        guard APIConfig.shouldShowAuth0InUI, APIConfig.isAuth0Required else { return }
         guard !hasCompletedPostAuth0Profile else { return }
         guard !hasSubmittedNameBeforeAuth0 else { return }
         userFirstName = ""

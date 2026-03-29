@@ -6,6 +6,9 @@ import SwiftUI
 @MainActor
 final class AuthManager: ObservableObject {
     @Published private(set) var isLoggedIn = false
+    /// Set to `true` after the first ``refreshLoginState()`` run finishes (keychain / stored session checked).
+    /// Used so the root view does not briefly show the Auth0 gate before credentials resolve.
+    @Published private(set) var hasResolvedInitialCredentials = false
     @Published private(set) var isLoggingIn = false
     @Published private(set) var lastError: String?
 
@@ -24,7 +27,7 @@ final class AuthManager: ObservableObject {
         } else {
             credentialsManager = nil
         }
-        Task { await refreshLoginState() }
+        // Initial session load runs from ``FaroRootView``’s `.task` so UI can gate on ``hasResolvedInitialCredentials``.
     }
 
     var isAuthConfigured: Bool {
@@ -49,6 +52,7 @@ final class AuthManager: ObservableObject {
     }
 
     func refreshLoginState() async {
+        defer { hasResolvedInitialCredentials = true }
         guard credentialsManager != nil else {
             isLoggedIn = false
             return

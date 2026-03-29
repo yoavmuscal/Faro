@@ -38,14 +38,30 @@ struct FaroRootView: View {
     @EnvironmentObject private var authManager: AuthManager
     @State private var section: FaroSection = .home
 
+    /// True while Auth0 is enabled and we still need to read the keychain before trusting ``isLoggedIn``.
+    /// Avoids a one-frame (or longer) flash of ``Auth0GateView`` for returning users: ``isLoggedIn`` starts `false` until ``AuthManager/refreshLoginState()`` finishes.
+    private var isAwaitingInitialAuthVerification: Bool {
+        guard APIConfig.shouldShowAuth0InUI, APIConfig.isAuth0Required else { return false }
+        guard !authManager.hasResolvedInitialCredentials else { return false }
+        return appState.hasCompletedPostAuth0Profile && appState.isSignedIn
+    }
+
     var body: some View {
         Group {
-            if appState.shouldShowMainApp(
+            if isAwaitingInitialAuthVerification {
+                ZStack {
+                    Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ProgressView()
+                        .tint(FaroPalette.purpleDeep)
+                        .controlSize(.large)
+                }
+                .faroCanvasBackground()
+            } else if appState.shouldShowMainApp(
                 isAuth0Enabled: APIConfig.shouldShowAuth0InUI,
                 isAuth0LoggedIn: authManager.isLoggedIn
             ) {
                 mainContent
-            } else if APIConfig.shouldShowAuth0InUI && !authManager.isLoggedIn && appState.hasSubmittedNameBeforeAuth0 {
+            } else if APIConfig.shouldShowAuth0InUI, APIConfig.isAuth0Required, !authManager.isLoggedIn, appState.hasSubmittedNameBeforeAuth0 {
                 Auth0GateView()
             } else {
                 WelcomeView()
@@ -71,13 +87,17 @@ struct FaroRootView: View {
         }
         .task {
             await authManager.refreshLoginState()
+            if APIConfig.shouldShowAuth0InUI, !APIConfig.isAuth0Required,
+               appState.hasSubmittedNameBeforeAuth0, !appState.hasCompletedPostAuth0Profile {
+                appState.completeSignInAfterAuth0()
+            }
             tryCompleteAuth0Flow()
         }
     }
 
     /// Finishes onboarding when the user already entered their name and has a valid Auth0 session (e.g. returning user).
     private func tryCompleteAuth0Flow() {
-        guard APIConfig.shouldShowAuth0InUI else { return }
+        guard APIConfig.shouldShowAuth0InUI, APIConfig.isAuth0Required else { return }
         guard appState.hasSubmittedNameBeforeAuth0, authManager.isLoggedIn else { return }
         appState.completeSignInAfterAuth0()
     }
@@ -439,7 +459,7 @@ struct WelcomeView: View {
 
                 Button(action: submitWelcome) {
                     HStack(spacing: 8) {
-                        Text(APIConfig.shouldShowAuth0InUI ? "Continue" : "Get Started")
+                        Text(APIConfig.shouldShowAuth0InUI && APIConfig.isAuth0Required ? "Continue" : "Get Started")
                             .font(FaroType.headline())
                         Image(systemName: "arrow.right")
                             .font(.subheadline.weight(.semibold))
@@ -474,7 +494,7 @@ struct WelcomeView: View {
     /// Drop stale UserDefaults and clear fields before the user types their name (Auth0 flow, step 1).
     private func prepareFreshNameEntryIfNeeded() {
         guard !didPrepareFreshNameFields else { return }
-        if APIConfig.shouldShowAuth0InUI, !appState.hasSubmittedNameBeforeAuth0 {
+        if APIConfig.shouldShowAuth0InUI, APIConfig.isAuth0Required, !appState.hasSubmittedNameBeforeAuth0 {
             appState.resetProfileForManualNameEntryIfNeeded()
             firstName = ""
             lastName = ""
@@ -484,7 +504,7 @@ struct WelcomeView: View {
     }
 
     private var welcomeCaption: String {
-        if APIConfig.shouldShowAuth0InUI {
+        if APIConfig.shouldShowAuth0InUI, APIConfig.isAuth0Required {
             return "Step 1 of 2 — enter your name. You’ll sign in with Auth0 next."
         }
         return "Enter your first and last name to continue."
@@ -545,7 +565,7 @@ struct WelcomeView: View {
         let f = firstName.trimmingCharacters(in: .whitespaces)
         let l = lastName.trimmingCharacters(in: .whitespaces)
         let e = email.trimmingCharacters(in: .whitespaces)
-        if APIConfig.shouldShowAuth0InUI {
+        if APIConfig.shouldShowAuth0InUI, APIConfig.isAuth0Required {
             appState.saveNameBeforeAuth0(firstName: f, lastName: l, email: e)
         } else {
             appState.signIn(firstName: f, lastName: l, email: e)

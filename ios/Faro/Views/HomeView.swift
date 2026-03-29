@@ -268,7 +268,7 @@ struct HomeView: View {
 
             if APIConfig.auth0MissingClientIdOnly {
                 homeAuthWarningBanner
-            } else if authManager.isAuthConfigured && !authManager.isLoggedIn {
+            } else if APIConfig.isAuth0Required, authManager.isAuthConfigured, !authManager.isLoggedIn {
                 homeAuthSignInPrompt
             }
 
