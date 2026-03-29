@@ -143,6 +143,15 @@ struct CoverageEntry: TimelineEntry {
     var hasPremiumEstimate: Bool {
         max(premiumLow, premiumHigh) > 0
     }
+
+    /// Total coverage lines used for priority mix visuals (matches dashboard “share” intuition).
+    var priorityMixTotal: Int {
+        max(1, requiredCount + recommendedCount + projectedCount)
+    }
+
+    var hasCategoryBreakdown: Bool {
+        requiredCount + recommendedCount + projectedCount > 0
+    }
 }
 
 // MARK: - Models
@@ -367,7 +376,7 @@ struct FaroWidget: Widget {
                 }
         }
         .configurationDisplayName("Faro Coverage")
-        .description("Business name, premium range, and top coverages at a glance. Tap to jump into the app.")
+        .description("Dashboard-style metrics: policies, estimated premium, confidence, priority mix, and top lines. Tap to open Faro.")
         .supportedFamilies([
             .systemSmall,
             .systemMedium,
@@ -506,6 +515,249 @@ private enum WidgetFormat {
         if d < 60 { return "Renewal in \(d / 7) wk" }
         return "Renewal ~\(d / 30) mo"
     }
+
+    /// Integer shares for priority mix (sum ≈ 100).
+    static func priorityPercents(entry: CoverageEntry) -> (req: Int, rec: Int, later: Int) {
+        guard entry.hasCategoryBreakdown else { return (0, 0, 0) }
+        let t = entry.priorityMixTotal
+        let r = (entry.requiredCount * 100) / t
+        let rec = (entry.recommendedCount * 100) / t
+        let later = max(0, 100 - r - rec)
+        return (r, rec, later)
+    }
+}
+
+// MARK: - Dashboard-inspired chrome (matches in-app Coverage dashboard)
+
+private enum FaroWidgetBrand {
+    /// Asset `FaroPurpleDeep` (light / dark).
+    static func purpleDeep(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 0.780, green: 0.725, blue: 0.898)
+            : Color(red: 0.431, green: 0.357, blue: 0.604)
+    }
+
+    /// Asset `FaroPurple`.
+    static func purple(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 0.608, green: 0.549, blue: 0.788)
+            : Color(red: 0.769, green: 0.710, blue: 0.878)
+    }
+
+    /// Asset `FaroSuccess` — premium / positive metrics.
+    static func success(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 0.282, green: 0.839, blue: 0.455)
+            : Color(red: 0.204, green: 0.780, blue: 0.349)
+    }
+
+    /// Asset `FaroInfo` — confidence gauge gradient end.
+    static func info(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 0.039, green: 0.576, blue: 1.0)
+            : Color(red: 0.039, green: 0.518, blue: 1.0)
+    }
+}
+
+private struct WidgetDashboardEyerow: View {
+    let label: String
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 6) {
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            FaroWidgetBrand.purpleDeep(colorScheme),
+                            FaroWidgetBrand.purple(colorScheme)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: 32, height: 4)
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(FaroWidgetBrand.purpleDeep(colorScheme).opacity(0.88))
+                .tracking(0.55)
+        }
+    }
+}
+
+/// Stacked segments proportional to required / recommended / projected counts (dashboard “premium mix” feel).
+private struct WidgetPriorityMixBar: View {
+    let entry: CoverageEntry
+    let colorScheme: ColorScheme
+    var height: CGFloat = 10
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if entry.hasCategoryBreakdown {
+                if entry.requiredCount > 0 {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(WidgetCoverageLineCategory.required.tint(for: colorScheme))
+                        .layoutPriority(Double(entry.requiredCount))
+                }
+                if entry.recommendedCount > 0 {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(WidgetCoverageLineCategory.recommended.tint(for: colorScheme))
+                        .layoutPriority(Double(entry.recommendedCount))
+                }
+                if entry.projectedCount > 0 {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(WidgetCoverageLineCategory.projected.tint(for: colorScheme))
+                        .layoutPriority(Double(entry.projectedCount))
+                }
+            } else {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(FaroWidgetColors.muted(colorScheme).opacity(0.22))
+            }
+        }
+        .frame(height: height)
+        .padding(4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(FaroWidgetColors.cardFill(colorScheme))
+        )
+    }
+}
+
+private struct WidgetPriorityMixCaption: View {
+    let entry: CoverageEntry
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        let p = WidgetFormat.priorityPercents(entry: entry)
+        Text("Req \(p.req)% · Rec \(p.rec)% · Later \(p.later)%")
+            .font(.system(size: 9, weight: .semibold, design: .rounded))
+            .foregroundStyle(FaroWidgetColors.faint(colorScheme))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+    }
+}
+
+/// Linear “confidence by line” strip aligned with the dashboard gauge.
+private struct WidgetConfidenceTrack: View {
+    let value: Double
+    let colorScheme: ColorScheme
+    var showLabel: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if showLabel {
+                HStack {
+                    Text("Avg. confidence")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(FaroWidgetColors.faint(colorScheme))
+                    Spacer(minLength: 0)
+                    Text("\(Int(value * 100))%")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(FaroWidgetBrand.purpleDeep(colorScheme))
+                }
+            }
+
+            GeometryReader { proxy in
+                let w = proxy.size.width
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(FaroWidgetColors.cardFill(colorScheme))
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    FaroWidgetBrand.info(colorScheme).opacity(colorScheme == .dark ? 0.95 : 0.85),
+                                    FaroWidgetBrand.purpleDeep(colorScheme)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(6, w * min(1, max(0, value))))
+                }
+            }
+            .frame(height: 7)
+        }
+    }
+}
+
+/// Compact glass metric tile — same hierarchy as `FaroDashboardMetricTile`.
+private struct WidgetDashboardMetricTile: View {
+    let icon: String
+    let tint: Color
+    let value: String
+    let title: String
+    let subtitle: String
+    let colorScheme: ColorScheme
+    var compact: Bool = false
+
+    private var corner: CGFloat { compact ? 12 : 14 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 4 : 5) {
+            HStack(spacing: 0) {
+                ZStack {
+                    if colorScheme == .dark {
+                        Circle()
+                            .fill(tint.opacity(0.55))
+                    } else {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [tint, tint.opacity(0.78)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .shadow(color: tint.opacity(0.2), radius: compact ? 4 : 8, y: 2)
+                    }
+                    Image(systemName: icon)
+                        .font(.system(size: compact ? 12 : 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: compact ? 28 : 32, height: compact ? 28 : 32)
+                Spacer(minLength: 0)
+            }
+
+            Text(value)
+                .font(.system(size: compact ? 14 : 15, weight: .bold, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.ink(colorScheme))
+                .minimumScaleFactor(0.55)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(title)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.ink(colorScheme).opacity(0.55))
+
+            Text(subtitle)
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.muted(colorScheme).opacity(0.85))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(compact ? 8 : 10)
+        .background {
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .fill(FaroWidgetColors.cardFill(colorScheme))
+                .overlay {
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(colorScheme == .dark ? 0.12 : 0.42),
+                                    tint.opacity(colorScheme == .dark ? 0.22 : 0.16)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.75
+                        )
+                }
+        }
+    }
 }
 
 // MARK: - Small
@@ -518,156 +770,186 @@ private struct SmallWidgetView: View {
         VStack(alignment: .leading, spacing: 0) {
             WidgetHeader(entry: entry, colorScheme: colorScheme)
 
-            Spacer(minLength: 6)
+            Spacer(minLength: 4)
+
+            WidgetDashboardEyerow(label: entry.isInProgress ? "Analysis" : "Coverage", colorScheme: colorScheme)
 
             Text(entry.businessName)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(.system(size: 14, weight: .bold, design: .rounded))
                 .foregroundStyle(FaroWidgetColors.ink(colorScheme))
                 .lineLimit(2)
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.88)
+                .padding(.top, 4)
 
             if entry.isInProgress {
                 Text(entry.headline)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(entry.status.accentColor(for: colorScheme))
+                    .foregroundStyle(FaroWidgetBrand.purpleDeep(colorScheme))
                     .lineLimit(2)
-                    .padding(.top, 4)
+                    .padding(.top, 3)
 
                 ProgressMeter(entry: entry, colorScheme: colorScheme)
-                    .padding(.top, 8)
+                    .padding(.top, 6)
 
-                Text(pipelineMicroLabel)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                Text("Risk → Coverage → Submission → Summary")
+                    .font(.system(size: 8, weight: .medium, design: .rounded))
                     .foregroundStyle(FaroWidgetColors.faint(colorScheme))
                     .lineLimit(1)
                     .padding(.top, 4)
             } else {
                 Text(entry.headline)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(entry.status.accentColor(for: colorScheme))
+                    .lineLimit(2)
+                    .padding(.top, 3)
+
+                Text(entry.message)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(FaroWidgetColors.muted(colorScheme))
                     .lineLimit(2)
-                    .padding(.top, 4)
+                    .padding(.top, 3)
 
                 if entry.hasPremiumEstimate {
-                    Text(WidgetFormat.premiumCompact(low: entry.premiumLow, high: entry.premiumHigh))
-                        .font(.system(size: 13, weight: .heavy, design: .rounded))
-                        .foregroundStyle(entry.status.accentColor(for: colorScheme))
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Image(systemName: "dollarsign.circle.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(FaroWidgetBrand.success(colorScheme))
+                        Text(WidgetFormat.premiumCompact(low: entry.premiumLow, high: entry.premiumHigh))
+                            .font(.system(size: 13, weight: .heavy, design: .rounded))
+                            .foregroundStyle(FaroWidgetBrand.success(colorScheme))
+                    }
+                    .padding(.top, 4)
+                }
+
+                if entry.hasCategoryBreakdown {
+                    WidgetPriorityMixBar(entry: entry, colorScheme: colorScheme, height: 7)
+                        .padding(.top, 8)
+                    WidgetPriorityMixCaption(entry: entry, colorScheme: colorScheme)
+                        .padding(.top, 3)
+                } else if entry.policyCount > 0 {
+                    Label("\(entry.policyCount) lines reviewed", systemImage: "shield.checkered")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(FaroWidgetColors.muted(colorScheme))
                         .padding(.top, 6)
                 }
 
-                HStack(spacing: 6) {
-                    MiniStat(icon: "doc.text.fill", value: "\(entry.policyCount)", scheme: colorScheme)
-                    MiniStat(icon: "exclamationmark.circle.fill", value: "\(entry.requiredCount)", scheme: colorScheme)
-                    if entry.averageConfidence > 0 {
-                        MiniStat(icon: "chart.bar.fill", value: "\(Int(entry.averageConfidence * 100))%", scheme: colorScheme)
-                    }
+                if entry.averageConfidence > 0 {
+                    WidgetConfidenceTrack(value: entry.averageConfidence, colorScheme: colorScheme, showLabel: false)
+                        .padding(.top, 8)
                 }
-                .padding(.top, 8)
             }
 
             Spacer(minLength: 0)
-
-            Text("Tap to open")
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .foregroundStyle(FaroWidgetColors.faint(colorScheme))
         }
-        .padding(14)
-    }
-
-    private var pipelineMicroLabel: String {
-        "Risk · Map · Packet · Summary"
-    }
-}
-
-private struct MiniStat: View {
-    let icon: String
-    let value: String
-    let scheme: ColorScheme
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 9, weight: .bold))
-            Text(value)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-        }
-        .foregroundStyle(FaroWidgetColors.ink(scheme))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(
-            Capsule(style: .continuous)
-                .fill(FaroWidgetColors.cardFill(scheme))
-        )
+        .padding(12)
     }
 }
 
 // MARK: - Medium
 
+/// Medium home-screen widgets are ~155pt tall — this layout stays within that budget (no priority bars, no GeometryReader gauges).
 private struct MediumWidgetView: View {
     @Environment(\.colorScheme) private var colorScheme
     let entry: CoverageEntry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             WidgetHeader(entry: entry, colorScheme: colorScheme)
 
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    WidgetDashboardEyerow(label: entry.isInProgress ? "Analysis" : "Coverage", colorScheme: colorScheme)
+
                     Text(entry.businessName)
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
                         .foregroundStyle(FaroWidgetColors.ink(colorScheme))
-                        .lineLimit(2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
 
                     Text(entry.headline)
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(entry.status.accentColor(for: colorScheme))
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(
+                            entry.isInProgress
+                                ? FaroWidgetBrand.purpleDeep(colorScheme)
+                                : entry.status.accentColor(for: colorScheme)
+                        )
                         .lineLimit(2)
+                        .minimumScaleFactor(0.88)
 
                     Text(entry.message)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
                         .foregroundStyle(FaroWidgetColors.muted(colorScheme))
-                        .lineLimit(2)
-
-                    if let renewal = WidgetFormat.renewalText(days: entry.nextRenewalDays) {
-                        Label(renewal, systemImage: "calendar")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(FaroWidgetColors.muted(colorScheme))
-                    }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
 
                     if entry.isInProgress {
                         ProgressMeter(entry: entry, colorScheme: colorScheme)
-                            .padding(.top, 4)
-                        Text("Pipeline: Risk → Coverage → Submission → Summary")
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
-                            .foregroundStyle(FaroWidgetColors.faint(colorScheme))
+                            .padding(.top, 2)
                     } else {
                         ActionPill(title: entry.nextActionTitle, status: entry.status, colorScheme: colorScheme)
                             .padding(.top, 2)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .layoutPriority(1)
 
-                Spacer(minLength: 0)
-
-                VStack(alignment: .trailing, spacing: 8) {
-                    MetricChip(title: "Policies", value: "\(entry.policyCount)", scheme: colorScheme)
-                    if !entry.isInProgress && entry.hasPremiumEstimate {
-                        MetricChip(title: "Est. annual", value: WidgetFormat.premiumCompact(low: entry.premiumLow, high: entry.premiumHigh), scheme: colorScheme, emphasize: true)
-                    }
-                    MetricChip(
-                        title: "Confidence",
-                        value: entry.isInProgress ? "…" : "\(Int(entry.averageConfidence * 100))%",
-                        scheme: colorScheme
+                VStack(alignment: .leading, spacing: 5) {
+                    WidgetDashboardMetricTile(
+                        icon: "shield.checkered",
+                        tint: FaroWidgetBrand.purpleDeep(colorScheme),
+                        value: "\(entry.policyCount)",
+                        title: "Policies",
+                        subtitle: "lines",
+                        colorScheme: colorScheme,
+                        compact: true
                     )
-                }
-            }
 
-            HStack(spacing: 6) {
-                CategoryCountChip(title: "Req", count: entry.requiredCount, color: WidgetCoverageLineCategory.required.tint(for: colorScheme), scheme: colorScheme)
-                CategoryCountChip(title: "Rec", count: entry.recommendedCount, color: WidgetCoverageLineCategory.recommended.tint(for: colorScheme), scheme: colorScheme)
-                CategoryCountChip(title: "Later", count: entry.projectedCount, color: WidgetCoverageLineCategory.projected.tint(for: colorScheme), scheme: colorScheme)
+                    if entry.isInProgress {
+                        WidgetDashboardMetricTile(
+                            icon: "arrow.triangle.branch",
+                            tint: FaroWidgetBrand.info(colorScheme),
+                            value: "\(entry.completedSteps)/\(max(entry.totalSteps, 1))",
+                            title: "Pipeline",
+                            subtitle: "steps",
+                            colorScheme: colorScheme,
+                            compact: true
+                        )
+                    } else if entry.hasPremiumEstimate {
+                        WidgetDashboardMetricTile(
+                            icon: "dollarsign.circle.fill",
+                            tint: FaroWidgetBrand.success(colorScheme),
+                            value: WidgetFormat.premiumCompact(low: entry.premiumLow, high: entry.premiumHigh),
+                            title: "Est./yr",
+                            subtitle: "range",
+                            colorScheme: colorScheme,
+                            compact: true
+                        )
+                    }
+
+                    if !entry.isInProgress, entry.averageConfidence > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(FaroWidgetBrand.purpleDeep(colorScheme))
+                            Text("\(Int(entry.averageConfidence * 100))% avg.")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(FaroWidgetBrand.purpleDeep(colorScheme))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(FaroWidgetColors.cardFill(colorScheme))
+                        )
+                    }
+                }
+                .frame(width: 104, alignment: .topLeading)
             }
         }
-        .padding(14)
+        .padding(11)
     }
 }
 
@@ -675,66 +957,140 @@ private struct MediumWidgetView: View {
 
 private struct LargeWidgetView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetFamily) private var widgetFamily
     let entry: CoverageEntry
 
+    private var maxCoverageRows: Int {
+        widgetFamily == .systemExtraLarge ? 5 : 2
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             WidgetHeader(entry: entry, colorScheme: colorScheme)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(entry.businessName)
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(FaroWidgetColors.ink(colorScheme))
-                    .lineLimit(2)
+            WidgetDashboardEyerow(label: entry.isInProgress ? "Analysis" : "Coverage", colorScheme: colorScheme)
+                .padding(.top, 8)
 
-                Text(entry.headline)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(entry.status.accentColor(for: colorScheme))
-                    .lineLimit(2)
+            Text(entry.businessName)
+                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.ink(colorScheme))
+                .lineLimit(2)
+                .minimumScaleFactor(0.9)
+                .padding(.top, 6)
 
-                Text(entry.message)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(FaroWidgetColors.muted(colorScheme))
-                    .lineLimit(3)
-            }
+            Text(entry.headline)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(entry.isInProgress ? FaroWidgetBrand.purpleDeep(colorScheme) : entry.status.accentColor(for: colorScheme))
+                .lineLimit(2)
+                .padding(.top, 3)
+
+            Text(entry.message)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(FaroWidgetColors.muted(colorScheme))
+                .lineLimit(widgetFamily == .systemExtraLarge ? 4 : 3)
+                .padding(.top, 2)
 
             if let renewal = WidgetFormat.renewalText(days: entry.nextRenewalDays) {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar.circle.fill")
-                        .font(.system(size: 14))
+                        .font(.system(size: 13))
                     Text(renewal)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                 }
                 .foregroundStyle(FaroWidgetColors.muted(colorScheme))
+                .padding(.top, 6)
             }
 
             if entry.isInProgress {
                 ProgressMeter(entry: entry, colorScheme: colorScheme)
+                    .padding(.top, 8)
                 PipelineStepRow(completed: entry.completedSteps, total: entry.totalSteps, colorScheme: colorScheme)
-                HStack(spacing: 8) {
-                    LargeMetricTile(title: "Step", value: "\(entry.completedSteps)/\(entry.totalSteps)", scheme: colorScheme)
-                    LargeMetricTile(title: "Next", value: nextPipelineStepName, scheme: colorScheme)
+                    .padding(.top, 4)
+                HStack(alignment: .top, spacing: 8) {
+                    WidgetDashboardMetricTile(
+                        icon: "checkmark.circle.fill",
+                        tint: FaroWidgetBrand.purpleDeep(colorScheme),
+                        value: "\(entry.completedSteps)/\(max(entry.totalSteps, 1))",
+                        title: "Progress",
+                        subtitle: "steps complete",
+                        colorScheme: colorScheme,
+                        compact: true
+                    )
+                    WidgetDashboardMetricTile(
+                        icon: "arrow.forward.circle.fill",
+                        tint: FaroWidgetBrand.info(colorScheme),
+                        value: nextPipelineStepName,
+                        title: "Up next",
+                        subtitle: "agent pipeline",
+                        colorScheme: colorScheme,
+                        compact: true
+                    )
                 }
+                .padding(.top, 8)
             } else {
-                HStack(spacing: 8) {
-                    LargeMetricTile(title: "Policies", value: "\(entry.policyCount)", scheme: colorScheme)
-                    LargeMetricTile(title: "Est. premium", value: entry.hasPremiumEstimate ? WidgetFormat.premiumAnnual(low: entry.premiumLow, high: entry.premiumHigh) : "—", scheme: colorScheme, valueSize: 13)
-                    LargeMetricTile(title: "Confidence", value: "\(Int(entry.averageConfidence * 100))%", scheme: colorScheme)
+                HStack(alignment: .top, spacing: 6) {
+                    WidgetDashboardMetricTile(
+                        icon: "shield.checkered",
+                        tint: FaroWidgetBrand.purpleDeep(colorScheme),
+                        value: "\(entry.policyCount)",
+                        title: "Policies",
+                        subtitle: "lines reviewed",
+                        colorScheme: colorScheme,
+                        compact: true
+                    )
+                    WidgetDashboardMetricTile(
+                        icon: "dollarsign.circle.fill",
+                        tint: FaroWidgetBrand.success(colorScheme),
+                        value: entry.hasPremiumEstimate
+                            ? WidgetFormat.premiumCompact(low: entry.premiumLow, high: entry.premiumHigh)
+                            : "—",
+                        title: "Est. annual",
+                        subtitle: "combined range",
+                        colorScheme: colorScheme,
+                        compact: true
+                    )
+                    WidgetDashboardMetricTile(
+                        icon: "chart.line.uptrend.xyaxis",
+                        tint: FaroWidgetBrand.purpleDeep(colorScheme),
+                        value: entry.averageConfidence > 0 ? "\(Int(entry.averageConfidence * 100))%" : "—",
+                        title: "Confidence",
+                        subtitle: "avg. across lines",
+                        colorScheme: colorScheme,
+                        compact: true
+                    )
                 }
+                .padding(.top, 8)
 
-                HStack(spacing: 6) {
-                    CategoryCountChip(title: "Required", count: entry.requiredCount, color: WidgetCoverageLineCategory.required.tint(for: colorScheme), scheme: colorScheme)
-                    CategoryCountChip(title: "Recommended", count: entry.recommendedCount, color: WidgetCoverageLineCategory.recommended.tint(for: colorScheme), scheme: colorScheme)
-                    CategoryCountChip(title: "Projected", count: entry.projectedCount, color: WidgetCoverageLineCategory.projected.tint(for: colorScheme), scheme: colorScheme)
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Text("Premium by priority")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(FaroWidgetColors.ink(colorScheme).opacity(0.72))
+                        Spacer(minLength: 0)
+                    }
+                    Text("Share of lines by type")
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundStyle(FaroWidgetColors.faint(colorScheme))
+
+                    WidgetPriorityMixBar(entry: entry, colorScheme: colorScheme, height: 10)
+                    if entry.hasCategoryBreakdown {
+                        WidgetPriorityMixCaption(entry: entry, colorScheme: colorScheme)
+                    } else {
+                        Text("Breakdown appears after Faro classifies each line.")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundStyle(FaroWidgetColors.muted(colorScheme))
+                    }
                 }
+                .padding(.top, 8)
 
                 if !entry.coverageLines.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Top coverages")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Priority lines")
                             .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(FaroWidgetColors.faint(colorScheme))
+                            .foregroundStyle(FaroWidgetColors.ink(colorScheme).opacity(0.72))
+                            .padding(.top, 8)
 
-                        ForEach(Array(entry.coverageLines.enumerated()), id: \.offset) { _, line in
+                        ForEach(Array(entry.coverageLines.prefix(maxCoverageRows).enumerated()), id: \.offset) { _, line in
                             CoverageLineRow(line: line, colorScheme: colorScheme)
                         }
                     }
@@ -742,17 +1098,18 @@ private struct LargeWidgetView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "star.fill")
                             .font(.system(size: 12))
-                            .foregroundStyle(entry.status.accentColor(for: colorScheme))
-                        Text("Focus: \(top)")
+                            .foregroundStyle(FaroWidgetBrand.purpleDeep(colorScheme))
+                        Text("Focus next: \(top)")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(FaroWidgetColors.ink(colorScheme))
                     }
-                    .padding(10)
+                    .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(FaroWidgetColors.cardFill(colorScheme))
                     )
+                    .padding(.top, 8)
                 }
             }
 
@@ -760,16 +1117,17 @@ private struct LargeWidgetView: View {
 
             HStack {
                 Spacer()
-                Text("Tap for \(destinationLabel)")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                Text("Tap · \(destinationLabel)")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
                     .foregroundStyle(FaroWidgetColors.faint(colorScheme))
             }
+            .padding(.top, 6)
         }
-        .padding(16)
+        .padding(14)
     }
 
     private var nextPipelineStepName: String {
-        let names = ["Risk", "Coverage", "Packet", "Summary"]
+        let names = ["Risk", "Coverage", "Submission", "Summary"]
         let idx = min(entry.completedSteps, max(0, names.count - 1))
         return names[idx]
     }
@@ -788,7 +1146,7 @@ private struct PipelineStepRow: View {
     let total: Int
     let colorScheme: ColorScheme
 
-    private let labels = ["Risk", "Coverage", "Packet", "Summary"]
+    private let labels = ["Risk", "Coverage", "Submission", "Summary"]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -802,32 +1160,6 @@ private struct PipelineStepRow: View {
     }
 }
 
-private struct LargeMetricTile: View {
-    let title: String
-    let value: String
-    let scheme: ColorScheme
-    var valueSize: CGFloat = 15
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .foregroundStyle(FaroWidgetColors.faint(scheme))
-            Text(value)
-                .font(.system(size: valueSize, weight: .bold, design: .rounded))
-                .foregroundStyle(FaroWidgetColors.ink(scheme))
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(FaroWidgetColors.cardFill(scheme))
-        )
-    }
-}
-
 // MARK: - Extra large (iPad)
 
 private struct ExtraLargeWidgetView: View {
@@ -835,7 +1167,6 @@ private struct ExtraLargeWidgetView: View {
 
     var body: some View {
         LargeWidgetView(entry: entry)
-            .padding(6)
     }
 }
 
@@ -1030,56 +1361,6 @@ private struct WidgetHeader: View {
         if minutes < 60 { return "\(minutes)m" }
         if minutes < 1440 { return "\(minutes / 60)h" }
         return "\(minutes / 1440)d"
-    }
-}
-
-private struct MetricChip: View {
-    let title: String
-    let value: String
-    let scheme: ColorScheme
-    var emphasize: Bool = false
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 3) {
-            Text(title.uppercased())
-                .font(.system(size: 8, weight: .bold, design: .rounded))
-                .foregroundStyle(FaroWidgetColors.faint(scheme))
-            Text(value)
-                .font(.system(size: emphasize ? 15 : 14, weight: .bold, design: .rounded))
-                .foregroundStyle(FaroWidgetColors.ink(scheme))
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(FaroWidgetColors.cardFill(scheme))
-        )
-    }
-}
-
-private struct CategoryCountChip: View {
-    let title: String
-    let count: Int
-    let color: Color
-    let scheme: ColorScheme
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(title)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-            Text("\(count)")
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-        }
-        .foregroundStyle(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .frame(maxWidth: .infinity)
-        .background(
-            Capsule(style: .continuous)
-                .fill(color.opacity(scheme == .dark ? 0.18 : 0.12))
-        )
     }
 }
 

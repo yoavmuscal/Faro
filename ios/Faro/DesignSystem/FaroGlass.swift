@@ -378,6 +378,31 @@ struct FaroDashboardInsightSectionHeader: View {
     }
 }
 
+/// Leading vertical stripe + multiline label; stripe height always matches the text block (no HStack measurement quirks).
+struct FaroDashboardStripeBulletRow: View {
+    let text: String
+    let stripe: Color
+    var textOpacity: Double = 0.88
+
+    var body: some View {
+        Text(text)
+            .font(FaroType.body())
+            .foregroundStyle(FaroPalette.ink.opacity(textOpacity))
+            .fixedSize(horizontal: false, vertical: true)
+            .lineSpacing(5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 14)
+            .background(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(stripe)
+                    .frame(width: 4)
+                    .frame(maxHeight: .infinity)
+            }
+            .padding(.vertical, FaroSpacing.xs)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 /// Hairline / soft gradient card edge — matches Coverage dashboard tiles.
 struct FaroDashboardCardOutline: View {
     @Environment(\.colorScheme) private var colorScheme

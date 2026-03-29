@@ -60,19 +60,26 @@ struct AgentTrackerView: View {
                 if !isComplete {
                     AnalysisProcessingHero(
                         isAnimating: processingActive,
-                        completedFraction: Double(completedCount) / Double(max(allSteps.count, 1))
+                        completedCount: completedCount,
+                        totalSteps: allSteps.count,
+                        hasError: hasError
                     )
-                    .padding(.top, FaroSpacing.sm)
+                    .padding(.top, FaroSpacing.md)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-
-                ProgressView(value: Double(completedCount), total: Double(allSteps.count))
-                    .tint(hasError ? FaroPalette.danger : FaroPalette.purpleDeep)
-                    .padding(.top, FaroSpacing.xs)
             }
             .animation(.easeInOut(duration: 0.35), value: isComplete)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(FaroSpacing.md)
+            .padding(.horizontal, FaroSpacing.md)
+            .padding(.top, FaroSpacing.xs)
+            .padding(.bottom, isComplete ? FaroSpacing.md : FaroSpacing.sm)
+
+            if !isComplete {
+                Rectangle()
+                    .fill(FaroPalette.ink.opacity(0.09))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 1)
+            }
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -85,7 +92,9 @@ struct AgentTrackerView: View {
                             .id(step)
                         }
                     }
-                    .padding(FaroSpacing.md)
+                    .padding(.horizontal, FaroSpacing.md)
+                    .padding(.top, FaroSpacing.md)
+                    .padding(.bottom, FaroSpacing.md)
                 }
                 .onChange(of: ws.stepUpdates.count) { _, _ in
                     if let active = allSteps.first(where: { step in
@@ -227,20 +236,55 @@ struct AgentTrackerView: View {
 
 private struct AnalysisProcessingHero: View {
     var isAnimating: Bool
-    var completedFraction: Double
+    var completedCount: Int
+    var totalSteps: Int
+    var hasError: Bool
+
+    private var total: Int { max(totalSteps, 1) }
+
+    private var progressFraction: Double {
+        Double(completedCount) / Double(total)
+    }
+
+    /// Copy that avoids a stark "0%" while the first step is still running.
+    private var progressHeadline: String {
+        if completedCount <= 0 { return "Starting" }
+        let pct = Int(round(progressFraction * 100))
+        return "\(pct)%"
+    }
+
+    private var progressDetail: String {
+        if completedCount <= 0 {
+            return "Pipeline will update as each step finishes."
+        }
+        let remaining = total - completedCount
+        if remaining == 0 { return "All steps complete." }
+        let stepWord = remaining == 1 ? "step" : "steps"
+        return "\(completedCount) of \(total) done · \(remaining) \(stepWord) left"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-            HStack(spacing: FaroSpacing.xs) {
-                LivePulseDot(isActive: isAnimating)
-                Text("Processing intake signals")
-                    .font(FaroType.caption(.semibold))
-                    .foregroundStyle(FaroPalette.ink.opacity(0.72))
-                Spacer(minLength: 0)
-                Text("\(Int(round(completedFraction * 100)))%")
-                    .font(FaroType.caption(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(FaroPalette.purpleDeep.opacity(0.85))
+            VStack(alignment: .leading, spacing: FaroSpacing.xs) {
+                HStack(alignment: .firstTextBaseline, spacing: FaroSpacing.sm) {
+                    LivePulseDot(isActive: isAnimating)
+                    Text("Processing intake signals")
+                        .font(FaroType.caption(.semibold))
+                        .foregroundStyle(FaroPalette.ink.opacity(0.78))
+                    Spacer(minLength: FaroSpacing.sm)
+                    Text(progressHeadline)
+                        .font(FaroType.caption(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(hasError ? FaroPalette.danger : FaroPalette.purpleDeep)
+                }
+
+                ProgressView(value: progressFraction)
+                    .tint(hasError ? FaroPalette.danger : FaroPalette.purpleDeep)
+
+                Text(progressDetail)
+                    .font(FaroType.caption2())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             ZStack(alignment: .bottom) {
@@ -282,9 +326,11 @@ private struct AnalysisProcessingHero: View {
                 .font(FaroType.caption2())
                 .foregroundStyle(FaroPalette.ink.opacity(0.42))
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, FaroSpacing.xs)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Analysis in progress")
+        .accessibilityLabel("Analysis in progress, \(progressHeadline)")
+        .accessibilityValue(progressDetail)
         .accessibilityHint(isAnimating ? "Animated visualization of live data processing" : "")
     }
 }
@@ -500,7 +546,7 @@ struct StepCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(stepTitle)
                     .font(FaroType.subheadline(.semibold))
-                    .foregroundStyle(update == nil ? FaroPalette.ink.opacity(0.45) : FaroPalette.ink)
+                    .foregroundStyle(update == nil ? FaroPalette.ink.opacity(0.58) : FaroPalette.ink)
 
                 if let summary = update?.summary, update?.status != .running {
                     Text(summary)
@@ -510,7 +556,7 @@ struct StepCard: View {
                 } else if update == nil {
                     Text(stepSubtitle)
                         .font(FaroType.caption())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.35))
+                        .foregroundStyle(FaroPalette.ink.opacity(0.48))
                 } else if update?.status == .running {
                     Text("Reasoning with your inputs…")
                         .font(FaroType.caption())
@@ -535,7 +581,7 @@ struct StepCard: View {
         case .complete: return FaroPalette.success
         case .running: return FaroPalette.info
         case .error: return FaroPalette.danger
-        case nil: return FaroPalette.ink.opacity(0.35)
+        case nil: return FaroPalette.ink.opacity(0.45)
         }
     }
 }

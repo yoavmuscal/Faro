@@ -45,7 +45,12 @@ final class VoiceIntakeViewModel: ObservableObject {
         do {
             let r = try await APIService.shared.startConversation()
             convSessionId = r.sessionId
-            try await liveService.connect(signedUrl: r.signedUrl)
+            if APIConfig.isDemoModeEnabled {
+                let intake = FaroDemoData.sampleGuidedIntake()
+                liveService.loadDemoSession(transcript: ElevenLabsConvService.transcript(from: intake))
+            } else {
+                try await liveService.connect(signedUrl: r.signedUrl)
+            }
         } catch {
             convStartError = "Conversational intake isn’t available on the server right now. \(error.localizedDescription)"
         }

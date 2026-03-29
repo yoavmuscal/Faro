@@ -40,6 +40,7 @@
 		A90000000000000000000004 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90000000000000000000006 /* AuthManager.swift */; };
 		B000000000000000000000019 /* FaroAuth0SessionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000019 /* FaroAuth0SessionCard.swift */; };
 		B00000000000000000000001C /* CoverageChatSpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001B /* CoverageChatSpeechTranscriber.swift */; };
+		B00000000000000000000001E /* FaroDemoData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001C /* FaroDemoData.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -105,6 +106,7 @@
 		A90000000000000000000006 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		A000000000000000000000019 /* FaroAuth0SessionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroAuth0SessionCard.swift; sourceTree = "<group>"; };
 		A00000000000000000000001B /* CoverageChatSpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageChatSpeechTranscriber.swift; sourceTree = "<group>"; };
+		A00000000000000000000001C /* FaroDemoData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroDemoData.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -168,6 +170,7 @@
 				A000000000000000000000003 /* APIService.swift */,
 				A000000000000000000000004 /* WebSocketService.swift */,
 				A000000000000000000000005 /* APIConfig.swift */,
+				A00000000000000000000001C /* FaroDemoData.swift */,
 				A90000000000000000000006 /* AuthManager.swift */,
 				8B5856D523D28CCEAA01A4A5 /* ElevenLabsConvService.swift */,
 				A00000000000000000000001B /* CoverageChatSpeechTranscriber.swift */,
@@ -374,6 +377,7 @@
 				A90000000000000000000004 /* AuthManager.swift in Sources */,
 				B000000000000000000000019 /* FaroAuth0SessionCard.swift in Sources */,
 				B00000000000000000000001C /* CoverageChatSpeechTranscriber.swift in Sources */,
+				B00000000000000000000001E /* FaroDemoData.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

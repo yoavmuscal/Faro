@@ -10,7 +10,7 @@ struct RiskProfileView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var isWideLayout: Bool { horizontalSizeClass == .regular }
-    private var horizontalPagePadding: CGFloat { isWideLayout ? FaroSpacing.xl + 8 : FaroSpacing.md + 4 }
+    private var horizontalPagePadding: CGFloat { FaroSpacing.dashboardPageHorizontal(isWideLayout: isWideLayout) }
     private var insightGridColumns: [GridItem] {
         if isWideLayout {
             [
@@ -81,6 +81,7 @@ struct RiskProfileView: View {
 
                 Spacer(minLength: 40)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, isWideLayout ? FaroSpacing.lg : FaroSpacing.md)
             .padding(.bottom, FaroSpacing.xl)
             .padding(.horizontal, horizontalPagePadding)
@@ -144,46 +145,48 @@ struct RiskProfileView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    @ViewBuilder
     private var tagBadgesRow: some View {
-        Group {
-            if isWideLayout {
-                HStack(spacing: FaroSpacing.sm) {
-                    if let industry = riskProfile.industry {
-                        TagPill(text: industry, icon: "building.2.fill", tint: FaroPalette.purpleDeep, expandToFillWidth: true)
+        if riskProfile.industry == nil && riskProfile.sicCode == nil {
+            EmptyView()
+        } else {
+            Group {
+                if isWideLayout {
+                    HStack(spacing: FaroSpacing.sm) {
+                        if let industry = riskProfile.industry {
+                            TagPill(
+                                text: industry,
+                                icon: "building.2.fill",
+                                tint: FaroPalette.purpleDeep,
+                                expandToFillWidth: true
+                            )
+                        }
+                        if let sic = riskProfile.sicCode {
+                            TagPill(text: "SIC \(sic)", icon: "number", tint: FaroPalette.info, expandToFillWidth: true)
+                        }
                     }
-                    if let sic = riskProfile.sicCode {
-                        TagPill(text: "SIC \(sic)", icon: "number", tint: FaroPalette.info, expandToFillWidth: true)
-                    }
-                }
-            } else {
-                FlowLayout(spacing: FaroSpacing.sm) {
-                    if let industry = riskProfile.industry {
-                        TagPill(text: industry, icon: "building.2.fill", tint: FaroPalette.purpleDeep)
-                    }
-                    if let sic = riskProfile.sicCode {
-                        TagPill(text: "SIC \(sic)", icon: "number", tint: FaroPalette.info)
+                } else {
+                    FlowLayout(spacing: FaroSpacing.sm) {
+                        if let industry = riskProfile.industry {
+                            TagPill(text: industry, icon: "building.2.fill", tint: FaroPalette.purpleDeep)
+                        }
+                        if let sic = riskProfile.sicCode {
+                            TagPill(text: "SIC \(sic)", icon: "number", tint: FaroPalette.info)
+                        }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private var metricStrip: some View {
-        Group {
-            if isWideLayout {
-                metricTiles
-                    .frame(maxWidth: .infinity)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    metricTiles
-                        .padding(.vertical, 2)
-                }
-            }
-        }
+        metricTiles
+            .frame(maxWidth: .infinity)
     }
 
     private var metricTiles: some View {
-        let tileMinHeight: CGFloat = isWideLayout ? 136 : 0
+        let tileMinHeight = FaroSpacing.dashboardMetricTileMinHeight(isWideLayout: isWideLayout)
         let level = riskProfile.riskLevel?.capitalized ?? "—"
         let contextValue: String = {
             if let ind = riskProfile.industry, !ind.isEmpty { return ind }
@@ -198,8 +201,7 @@ struct RiskProfileView: View {
                 icon: "chart.bar.fill",
                 tint: riskLevelColor
             )
-            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: isWideLayout ? tileMinHeight : nil, alignment: .topLeading)
-            .frame(minWidth: isWideLayout ? 0 : 160)
+            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: tileMinHeight, alignment: .topLeading)
 
             FaroDashboardMetricTile(
                 title: "Business context",
@@ -208,8 +210,7 @@ struct RiskProfileView: View {
                 icon: "building.columns.fill",
                 tint: FaroPalette.purpleDeep
             )
-            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: isWideLayout ? tileMinHeight : nil, alignment: .topLeading)
-            .frame(minWidth: isWideLayout ? 0 : 176)
+            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: tileMinHeight, alignment: .topLeading)
         }
     }
 
@@ -292,10 +293,11 @@ struct RiskProfileView: View {
             )
 
             VStack(alignment: .leading, spacing: FaroSpacing.md + 2) {
-                ForEach(exposures, id: \.self) { exposure in
-                    riskInsightRow(text: exposure, stripe: FaroPalette.warning)
+                ForEach(Array(exposures.enumerated()), id: \.offset) { _, exposure in
+                    FaroDashboardStripeBulletRow(text: exposure, stripe: FaroPalette.warning)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .faroDashboardCardSurface(innerPadding: cardInnerPadding)
     }
@@ -311,10 +313,11 @@ struct RiskProfileView: View {
             )
 
             VStack(alignment: .leading, spacing: FaroSpacing.md + 2) {
-                ForEach(reqs, id: \.self) { req in
-                    riskInsightRow(text: req, stripe: FaroPalette.info)
+                ForEach(Array(reqs.enumerated()), id: \.offset) { _, req in
+                    FaroDashboardStripeBulletRow(text: req, stripe: FaroPalette.info)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .faroDashboardCardSurface(innerPadding: cardInnerPadding)
     }
@@ -330,10 +333,11 @@ struct RiskProfileView: View {
             )
 
             VStack(alignment: .leading, spacing: FaroSpacing.md + 2) {
-                ForEach(implications, id: \.self) { item in
-                    riskInsightRow(text: item, stripe: FaroPalette.purpleDeep)
+                ForEach(Array(implications.enumerated()), id: \.offset) { _, item in
+                    FaroDashboardStripeBulletRow(text: item, stripe: FaroPalette.purpleDeep)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .faroDashboardCardSurface(innerPadding: cardInnerPadding)
     }
@@ -349,10 +353,11 @@ struct RiskProfileView: View {
             )
 
             VStack(alignment: .leading, spacing: FaroSpacing.md + 2) {
-                ForEach(risks, id: \.self) { risk in
-                    riskInsightRow(text: risk, stripe: FaroPalette.danger)
+                ForEach(Array(risks.enumerated()), id: \.offset) { _, risk in
+                    FaroDashboardStripeBulletRow(text: risk, stripe: FaroPalette.danger)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .faroDashboardCardSurface(innerPadding: cardInnerPadding)
     }
@@ -374,24 +379,6 @@ struct RiskProfileView: View {
                 .lineSpacing(6)
         }
         .faroDashboardCardSurface(innerPadding: cardInnerPadding)
-    }
-
-    private func riskInsightRow(text: String, stripe: Color) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(stripe)
-                .frame(width: 4)
-                .frame(minHeight: 22)
-                .padding(.top, 5)
-
-            Text(text)
-                .font(FaroType.body())
-                .foregroundStyle(FaroPalette.ink.opacity(0.88))
-                .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.vertical, FaroSpacing.xs)
     }
 }
 

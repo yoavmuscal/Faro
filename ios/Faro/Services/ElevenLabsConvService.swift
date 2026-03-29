@@ -39,6 +39,8 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     @Published var transcript: [ConvTranscriptTurn] = []
     @Published var isAgentSpeaking: Bool = false
     @Published var conversationEndedByServer: Bool = false
+    /// When true, agent TTS is not played (e.g. coverage chat composer — ElevenLabs mic input only).
+    var suppressAgentPlayback = false
     private nonisolated(unsafe) var _agentSpeaking = false
     private nonisolated(unsafe) var _pendingBuffers: Int32 = 0
 
@@ -144,6 +146,14 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     func disconnect() {
         cleanupAudioAndSocket()
         state = .disconnected
+    }
+
+    /// Offline demo: skip ElevenLabs WebSocket and show a ready-to-finish conversation with a canned transcript.
+    func loadDemoSession(transcript: [ConvTranscriptTurn]) {
+        cleanupAudioAndSocket()
+        self.transcript = transcript
+        conversationEndedByServer = false
+        state = .connected
     }
 
     private func sendConversationInitiationClientData() async throws {
@@ -420,6 +430,14 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     }
 
     private func playIncomingAudio(data: Data) {
+        if suppressAgentPlayback {
+            let remaining = OSAtomicDecrement32(&_pendingBuffers)
+            if remaining <= 0 {
+                _agentSpeaking = false
+                isAgentSpeaking = false
+            }
+            return
+        }
         guard let format = playbackPCMFormat else { return }
         let bytesPerFrame = Int(format.streamDescription.pointee.mBytesPerFrame)
         guard bytesPerFrame > 0, data.count % bytesPerFrame == 0 else { return }

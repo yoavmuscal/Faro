@@ -5,11 +5,17 @@ struct SubmissionPacketView: View {
     let businessName: String
 
     @State private var pageAppeared = false
+    /// Collapsible sections — start with the essentials open; details and notes on demand.
+    @State private var applicantOpen = true
+    @State private var operationsOpen = false
+    @State private var coveragesOpen = true
+    @State private var lossOpen = true
+    @State private var notesOpen = false
+
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.colorScheme) private var colorScheme
 
     private var isWideLayout: Bool { horizontalSizeClass == .regular }
-    private var horizontalPagePadding: CGFloat { isWideLayout ? FaroSpacing.xl + 8 : FaroSpacing.md + 4 }
+    private var horizontalPagePadding: CGFloat { FaroSpacing.dashboardPageHorizontal(isWideLayout: isWideLayout) }
 
     private var sectionGridColumns: [GridItem] {
         if isWideLayout {
@@ -20,6 +26,12 @@ struct SubmissionPacketView: View {
         } else {
             [GridItem(.flexible(), alignment: .topLeading)]
         }
+    }
+
+    private var fieldGridColumns: [GridItem] {
+        isWideLayout
+            ? [GridItem(.flexible()), GridItem(.flexible())]
+            : [GridItem(.flexible())]
     }
 
     private var cardInnerPadding: CGFloat { FaroSpacing.xl }
@@ -39,22 +51,21 @@ struct SubmissionPacketView: View {
         return n.isEmpty ? "Carrier submission" : n
     }
 
+    private var coverageCount: Int {
+        packet.requestedCoverages?.count ?? 0
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: isWideLayout ? FaroSpacing.xl : FaroSpacing.lg) {
-                dashboardHero
+                packetHeader
                     .opacity(pageAppeared ? 1 : 0)
                     .offset(y: pageAppeared ? 0 : 14)
 
-                metricStrip
-                    .opacity(pageAppeared ? 1 : 0)
-                    .offset(y: pageAppeared ? 0 : 18)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.04), value: pageAppeared)
-
-                submissionGallery
+                submissionSections
                     .opacity(pageAppeared ? 1 : 0)
                     .offset(y: pageAppeared ? 0 : 16)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.08), value: pageAppeared)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.06), value: pageAppeared)
 
                 Spacer(minLength: 40)
             }
@@ -74,151 +85,86 @@ struct SubmissionPacketView: View {
         }
     }
 
-    // MARK: - Hero & metrics
+    // MARK: - Header (single glance, no duplicate metrics below)
 
-    private var dashboardHero: some View {
+    private var packetHeader: some View {
         VStack(alignment: .leading, spacing: FaroSpacing.sm) {
             Text(timeBasedGreeting)
                 .font(FaroType.subheadline(.semibold))
                 .foregroundStyle(FaroPalette.ink.opacity(0.45))
-
-            HStack(alignment: .firstTextBaseline, spacing: FaroSpacing.sm) {
-                Capsule()
-                    .fill(
-                        colorScheme == .dark
-                            ? AnyShapeStyle(FaroPalette.purpleDeep.opacity(0.85))
-                            : AnyShapeStyle(
-                                LinearGradient(
-                                    colors: [FaroPalette.purpleDeep, FaroPalette.purple],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                    )
-                    .frame(width: 36, height: 5)
-                Text("Packet")
-                    .font(FaroType.caption(.semibold))
-                    .foregroundStyle(FaroPalette.purpleDeep.opacity(0.85))
-                    .textCase(.uppercase)
-                    .tracking(0.6)
-            }
 
             Text(displayTitle)
                 .font(isWideLayout ? FaroType.largeTitle() : FaroType.title())
                 .foregroundStyle(FaroPalette.ink)
                 .multilineTextAlignment(.leading)
 
-            Text("A clear snapshot for underwriters: who you are, how you operate, what you’re asking to place, and any notes that help tell the story.")
-                .font(isWideLayout ? FaroType.body() : FaroType.subheadline())
+            Text("Underwriter-ready summary: who you are, how you operate, what to place, and anything carriers should know.")
+                .font(FaroType.subheadline())
                 .foregroundStyle(FaroPalette.ink.opacity(0.52))
-                .frame(maxWidth: isWideLayout ? 640 : .infinity, alignment: .leading)
-                .lineSpacing(3)
+                .frame(maxWidth: isWideLayout ? 560 : .infinity, alignment: .leading)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
 
-            tagBadgesRow
+            headerChipsRow
                 .padding(.top, FaroSpacing.xs)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var tagBadgesRow: some View {
-        Group {
-            if isWideLayout {
-                HStack(spacing: FaroSpacing.sm) {
-                    if let date = packet.submissionDate {
-                        TagPill(text: date, icon: "calendar", tint: FaroPalette.info, expandToFillWidth: true)
-                    }
-                    TagPill(text: "Carrier-ready", icon: "checkmark.seal.fill", tint: FaroPalette.success, expandToFillWidth: true)
-                }
-            } else {
-                FlowLayout(spacing: FaroSpacing.sm) {
-                    if let date = packet.submissionDate {
-                        TagPill(text: date, icon: "calendar", tint: FaroPalette.info)
-                    }
-                    TagPill(text: "Carrier-ready", icon: "checkmark.seal.fill", tint: FaroPalette.success)
-                }
-            }
-        }
-    }
-
-    private var metricStrip: some View {
-        Group {
-            if isWideLayout {
-                metricTiles
-                    .frame(maxWidth: .infinity)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    metricTiles
-                        .padding(.vertical, 2)
-                }
-            }
-        }
-    }
-
-    private var metricTiles: some View {
-        let tileMinHeight: CGFloat = isWideLayout ? 136 : 0
+    private var headerChipsRow: some View {
         let dateDisplay: String = {
             guard let raw = packet.submissionDate?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
-                return "—"
+                return "Date TBD"
             }
             return raw
         }()
-        return HStack(alignment: .top, spacing: FaroSpacing.md) {
-            FaroDashboardMetricTile(
-                title: "Submission date",
-                value: dateDisplay,
-                subtitle: "Shown on this packet",
-                icon: "calendar.circle.fill",
-                tint: FaroPalette.info
-            )
-            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: isWideLayout ? tileMinHeight : nil, alignment: .topLeading)
-            .frame(minWidth: isWideLayout ? 0 : 160)
 
-            FaroDashboardMetricTile(
-                title: "Status",
-                value: "Ready to share",
-                subtitle: "Formatted for carriers",
-                icon: "doc.text.fill",
-                tint: FaroPalette.success
-            )
-            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: isWideLayout ? tileMinHeight : nil, alignment: .topLeading)
-            .frame(minWidth: isWideLayout ? 0 : 176)
-        }
-    }
-
-    // MARK: - Section gallery
-
-    private var submissionGallery: some View {
-        LazyVGrid(columns: sectionGridColumns, alignment: .leading, spacing: FaroSpacing.lg) {
-            if let applicant = packet.applicant {
-                applicantSection(applicant)
-            }
-            if let ops = packet.operations {
-                operationsSection(ops)
-            }
-            if let coverages = packet.requestedCoverages, !coverages.isEmpty {
-                requestedCoveragesSection(coverages)
-                    .gridCellColumns(isWideLayout ? 2 : 1)
-            }
-            lossHistoryCleanSection
-            if let notes = packet.underwriterNotes, !notes.isEmpty {
-                underwriterNotesSection(notes)
+        return FlowLayout(spacing: FaroSpacing.sm) {
+            TagPill(text: dateDisplay, icon: "calendar", tint: FaroPalette.info, expandToFillWidth: false)
+            TagPill(text: "Ready to share", icon: "checkmark.seal.fill", tint: FaroPalette.success, expandToFillWidth: false)
+            if coverageCount > 0 {
+                TagPill(
+                    text: coverageCount == 1 ? "1 coverage" : "\(coverageCount) coverages",
+                    icon: "shield.checkered",
+                    tint: FaroPalette.purpleDeep,
+                    expandToFillWidth: false
+                )
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Sections
 
-    private func applicantSection(_ applicant: SubmissionApplicant) -> some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.lg + 4) {
-            FaroDashboardInsightSectionHeader(
-                icon: "person.crop.rectangle.fill",
-                iconTint: FaroPalette.purpleDeep,
-                title: "Applicant",
-                subtitle: "Legal entity, structure, and where you operate",
-                style: .emphasized
-            )
+    private var submissionSections: some View {
+        LazyVGrid(columns: sectionGridColumns, alignment: .leading, spacing: FaroSpacing.lg) {
+            if let applicant = packet.applicant {
+                collapsibleApplicant(applicant)
+            }
+            if let ops = packet.operations {
+                collapsibleOperations(ops)
+            }
+            if let coverages = packet.requestedCoverages, !coverages.isEmpty {
+                collapsibleCoverages(coverages)
+                    .gridCellColumns(isWideLayout ? 2 : 1)
+            }
+            collapsibleLossHistory
+            if let notes = packet.underwriterNotes, !notes.isEmpty {
+                collapsibleNotes(notes)
+            }
+        }
+    }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: FaroSpacing.md) {
+    private func collapsibleApplicant(_ applicant: SubmissionApplicant) -> some View {
+        PacketCollapsibleCard(
+            title: "Applicant",
+            subtitle: "Legal name, structure, and where you operate",
+            icon: "person.crop.rectangle.fill",
+            iconTint: FaroPalette.purpleDeep,
+            isExpanded: $applicantOpen,
+            innerPadding: cardInnerPadding
+        ) {
+            LazyVGrid(columns: fieldGridColumns, alignment: .leading, spacing: FaroSpacing.md) {
                 FieldRow(label: "Legal name", value: applicant.legalName)
                 FieldRow(label: "DBA", value: applicant.dba)
                 FieldRow(label: "Business type", value: applicant.businessType)
@@ -227,154 +173,194 @@ struct SubmissionPacketView: View {
                 FieldRow(label: "Incorporated in", value: applicant.stateOfIncorporation)
             }
         }
-        .faroDashboardCardSurface(innerPadding: cardInnerPadding)
-        .overlay { FaroDashboardCardOutline() }
     }
 
-    private func operationsSection(_ ops: SubmissionOperations) -> some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.lg + 4) {
-            FaroDashboardInsightSectionHeader(
-                icon: "gearshape.2.fill",
-                iconTint: FaroPalette.info,
-                title: "Operations",
-                subtitle: "Industry codes, headcount, and financial snapshot",
-                style: .emphasized
-            )
-
-            if let desc = ops.description, !desc.isEmpty {
-                Text(desc)
-                    .font(FaroType.body())
-                    .foregroundStyle(FaroPalette.ink.opacity(0.82))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineSpacing(5)
-            }
-
-            Divider().opacity(0.3)
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: FaroSpacing.md) {
-                if let sic = ops.sicCode { FieldRow(label: "SIC", value: sic) }
-                if let naics = ops.naicsCode { FieldRow(label: "NAICS", value: naics) }
-                if let emp = ops.employees {
-                    FieldRow(label: "Employees", value: emp.total.map { "\($0)" } ?? "\(emp.fullTime ?? 0) FT / \(emp.partTime ?? 0) PT")
+    private func collapsibleOperations(_ ops: SubmissionOperations) -> some View {
+        PacketCollapsibleCard(
+            title: "Operations",
+            subtitle: "What you do, size, and financial snapshot",
+            icon: "gearshape.2.fill",
+            iconTint: FaroPalette.info,
+            isExpanded: $operationsOpen,
+            innerPadding: cardInnerPadding
+        ) {
+            VStack(alignment: .leading, spacing: FaroSpacing.md) {
+                if let desc = ops.description, !desc.isEmpty {
+                    Text(desc)
+                        .font(FaroType.body())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.82))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(4)
                 }
-                if let rev = ops.revenue {
-                    FieldRow(label: "Annual revenue", value: rev.annual.map { "$\(Int($0).formatted())" })
-                }
-                if let pay = ops.payroll {
-                    FieldRow(label: "Annual payroll", value: pay.annual.map { "$\(Int($0).formatted())" })
+
+                Divider().opacity(0.3)
+
+                LazyVGrid(columns: fieldGridColumns, alignment: .leading, spacing: FaroSpacing.md) {
+                    if let sic = ops.sicCode { FieldRow(label: "SIC", value: sic) }
+                    if let naics = ops.naicsCode { FieldRow(label: "NAICS", value: naics) }
+                    if let emp = ops.employees {
+                        FieldRow(label: "Employees", value: emp.total.map { "\($0)" } ?? "\(emp.fullTime ?? 0) FT / \(emp.partTime ?? 0) PT")
+                    }
+                    if let rev = ops.revenue {
+                        FieldRow(label: "Annual revenue", value: rev.annual.map { "$\(Int($0).formatted())" })
+                    }
+                    if let pay = ops.payroll {
+                        FieldRow(label: "Annual payroll", value: pay.annual.map { "$\(Int($0).formatted())" })
+                    }
                 }
             }
         }
-        .faroDashboardCardSurface(innerPadding: cardInnerPadding)
     }
 
-    private func requestedCoveragesSection(_ coverages: [SubmissionRequestedCoverage]) -> some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.lg + 4) {
-            FaroDashboardInsightSectionHeader(
-                icon: "shield.checkered",
-                iconTint: FaroPalette.purpleDeep,
-                title: "Requested coverages",
-                subtitle: "Lines you’re asking to place, with limits and dates",
-                style: .emphasized
-            )
-
+    private func collapsibleCoverages(_ coverages: [SubmissionRequestedCoverage]) -> some View {
+        PacketCollapsibleCard(
+            title: "Requested coverages",
+            subtitle: "Lines, limits, and effective dates",
+            icon: "shield.checkered",
+            iconTint: FaroPalette.purpleDeep,
+            isExpanded: $coveragesOpen,
+            innerPadding: cardInnerPadding
+        ) {
             VStack(alignment: .leading, spacing: FaroSpacing.lg) {
-                ForEach(coverages) { cov in
-                    VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-                        Text(cov.type ?? "Coverage")
-                            .font(FaroType.title3(.semibold))
-                            .foregroundStyle(FaroPalette.ink)
-
-                        HStack(alignment: .top, spacing: FaroSpacing.lg) {
-                            if let limits = cov.limits {
-                                MiniField(label: "Limits", value: limits)
-                            }
-                            if let deductible = cov.deductible {
-                                MiniField(label: "Deductible", value: deductible)
-                            }
-                            if let date = cov.effectiveDate {
-                                MiniField(label: "Effective", value: date)
-                            }
-                        }
-
-                        if let notes = cov.notes, !notes.isEmpty {
-                            Text(notes)
-                                .font(FaroType.subheadline())
-                                .foregroundStyle(FaroPalette.ink.opacity(0.62))
-                                .fixedSize(horizontal: false, vertical: true)
-                                .lineSpacing(4)
-                        }
-                    }
-                    .padding(FaroSpacing.lg)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
-                            .fill(FaroPalette.surface.opacity(0.55))
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
-                            .strokeBorder(FaroPalette.glassStroke.opacity(0.2), lineWidth: 0.5)
-                    }
+                ForEach(Array(coverages.enumerated()), id: \.offset) { index, cov in
+                    coverageItemCard(cov, index: index, total: coverages.count)
                 }
             }
         }
-        .faroDashboardCardSurface(innerPadding: cardInnerPadding)
     }
 
-    private var lossHistoryCleanSection: some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.lg + 4) {
-            FaroDashboardInsightSectionHeader(
-                icon: "clock.arrow.trianglehead.counterclockwise.rotate.90",
-                iconTint: FaroPalette.warning,
-                title: "Loss history",
-                subtitle: "Claims and incidents you’ve told us about",
-                style: .emphasized
-            )
+    private func coverageItemCard(_ cov: SubmissionRequestedCoverage, index: Int, total: Int) -> some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+            HStack {
+                Text(cov.type ?? "Coverage")
+                    .font(FaroType.headline(.semibold))
+                    .foregroundStyle(FaroPalette.ink)
+                Spacer(minLength: 0)
+                if total > 1 {
+                    Text("\(index + 1)/\(total)")
+                        .font(FaroType.caption(.medium))
+                        .foregroundStyle(FaroPalette.ink.opacity(0.38))
+                }
+            }
 
+            VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                if let limits = cov.limits {
+                    MiniField(label: "Limits", value: limits)
+                }
+                if let deductible = cov.deductible {
+                    MiniField(label: "Deductible", value: deductible)
+                }
+                if let date = cov.effectiveDate {
+                    MiniField(label: "Effective", value: date)
+                }
+            }
+
+            if let notes = cov.notes, !notes.isEmpty {
+                Text(notes)
+                    .font(FaroType.subheadline())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.62))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(3)
+                    .padding(.top, FaroSpacing.xs)
+            }
+        }
+        .padding(FaroSpacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
+                .fill(FaroPalette.surface.opacity(0.55))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
+                .strokeBorder(FaroPalette.glassStroke.opacity(0.2), lineWidth: 0.5)
+        }
+    }
+
+    private var collapsibleLossHistory: some View {
+        PacketCollapsibleCard(
+            title: "Loss history",
+            subtitle: "Claims reported on this submission",
+            icon: "clock.arrow.trianglehead.counterclockwise.rotate.90",
+            iconTint: FaroPalette.warning,
+            isExpanded: $lossOpen,
+            innerPadding: cardInnerPadding
+        ) {
             HStack(alignment: .center, spacing: FaroSpacing.sm) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title3)
                     .foregroundStyle(FaroPalette.success)
-                Text("No prior losses reported on this submission.")
+                Text("No prior losses reported.")
                     .font(FaroType.body())
                     .foregroundStyle(FaroPalette.ink.opacity(0.72))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .faroDashboardCardSurface(innerPadding: cardInnerPadding)
     }
 
-    private func underwriterNotesSection(_ notes: [String]) -> some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.lg + 4) {
-            FaroDashboardInsightSectionHeader(
-                icon: "note.text",
-                iconTint: FaroPalette.ink.opacity(0.7),
-                title: "Underwriter notes",
-                subtitle: "Highlights worth mentioning in a conversation",
-                style: .emphasized
-            )
-
-            VStack(alignment: .leading, spacing: FaroSpacing.md + 2) {
-                ForEach(notes, id: \.self) { note in
-                    HStack(alignment: .top, spacing: 14) {
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(FaroPalette.purpleDeep)
-                            .frame(width: 4)
-                            .frame(minHeight: 22)
-                            .padding(.top, 5)
-
-                        Text(note)
-                            .font(FaroType.body())
-                            .foregroundStyle(FaroPalette.ink.opacity(0.85))
-                            .fixedSize(horizontal: false, vertical: true)
-                            .lineSpacing(5)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding(.vertical, FaroSpacing.xs)
+    private func collapsibleNotes(_ notes: [String]) -> some View {
+        PacketCollapsibleCard(
+            title: "Underwriter notes",
+            subtitle: "Talking points for carriers",
+            icon: "note.text",
+            iconTint: FaroPalette.ink.opacity(0.7),
+            isExpanded: $notesOpen,
+            innerPadding: cardInnerPadding
+        ) {
+            VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                ForEach(Array(notes.enumerated()), id: \.offset) { _, note in
+                    FaroDashboardStripeBulletRow(text: note, stripe: FaroPalette.purpleDeep, textOpacity: 0.85)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .faroDashboardCardSurface(innerPadding: cardInnerPadding)
+    }
+}
+
+// MARK: - Collapsible card chrome
+
+private struct PacketCollapsibleCard<Content: View>: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let iconTint: Color
+    @Binding var isExpanded: Bool
+    var innerPadding: CGFloat
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: FaroSpacing.md) {
+                    FaroDashboardInsightSectionHeader(
+                        icon: icon,
+                        iconTint: iconTint,
+                        title: title,
+                        subtitle: subtitle,
+                        style: .emphasized
+                    )
+                    Image(systemName: "chevron.down.circle.fill")
+                        .font(.title2)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(FaroPalette.ink.opacity(0.35))
+                        .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isExpanded)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                content()
+                    .padding(.top, FaroSpacing.md)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(innerPadding)
+        .faroDashboardCardSurface(innerPadding: 0)
+        .overlay { FaroDashboardCardOutline() }
     }
 }
 
@@ -407,16 +393,17 @@ private struct MiniField: View {
     let value: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .firstTextBaseline, spacing: FaroSpacing.sm) {
             Text(label)
                 .font(FaroType.caption())
                 .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                .frame(width: 88, alignment: .leading)
             Text(value)
                 .font(FaroType.subheadline(.semibold))
                 .foregroundStyle(FaroPalette.ink)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

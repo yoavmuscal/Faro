@@ -1,20 +1,21 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Combine
 import Foundation
-import Speech
+@preconcurrency import Speech
 
 /// Live dictation for the coverage follow-up composer using on-device speech recognition.
+@MainActor
 final class CoverageChatSpeechTranscriber: NSObject, ObservableObject {
     @Published private(set) var isRecording = false
     @Published private(set) var partialTranscript = ""
     @Published private(set) var lastError: String?
 
     func clearError() {
-        DispatchQueue.main.async { self.lastError = nil }
+        lastError = nil
     }
 
     func noteError(_ message: String) {
-        DispatchQueue.main.async { self.lastError = message }
+        lastError = message
     }
 
     private let speechRecognizer: SFSpeechRecognizer?
@@ -39,13 +40,13 @@ final class CoverageChatSpeechTranscriber: NSObject, ObservableObject {
     /// Returns whether microphone access is granted (and requests if needed).
     func ensureMicrophoneAccess() async -> Bool {
         await withCheckedContinuation { continuation in
-            switch AVAudioSession.sharedInstance().recordPermission {
+            switch AVAudioApplication.shared.recordPermission {
             case .granted:
                 continuation.resume(returning: true)
             case .denied:
                 continuation.resume(returning: false)
             case .undetermined:
-                AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                AVAudioApplication.requestRecordPermission { granted in
                     continuation.resume(returning: granted)
                 }
             @unknown default:
@@ -55,10 +56,8 @@ final class CoverageChatSpeechTranscriber: NSObject, ObservableObject {
     }
 
     func start() async throws {
-        await MainActor.run {
-            self.lastError = nil
-            self.partialTranscript = ""
-        }
+        lastError = nil
+        partialTranscript = ""
 
         guard let speechRecognizer, speechRecognizer.isAvailable else {
             throw NSError(
@@ -102,22 +101,21 @@ final class CoverageChatSpeechTranscriber: NSObject, ObservableObject {
         let format = inputNode.outputFormat(forBus: 0)
 
         recognitionTask = speechRecognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
-            guard let self else { return }
-            if let result {
-                let text = result.bestTranscription.formattedString
-                DispatchQueue.main.async {
-                    self.partialTranscript = text
+            let transcript = result?.bestTranscription.formattedString
+            let errorMessage = error?.localizedDescription
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let transcript {
+                    self.partialTranscript = transcript
                 }
-            }
-            if error != nil {
-                DispatchQueue.main.async {
-                    self.lastError = error?.localizedDescription
+                if let errorMessage {
+                    self.lastError = errorMessage
                 }
             }
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-            self?.recognitionRequest?.append(buffer)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            recognitionRequest.append(buffer)
         }
 
         audioEngine.prepare()
@@ -128,9 +126,7 @@ final class CoverageChatSpeechTranscriber: NSObject, ObservableObject {
             throw error
         }
 
-        DispatchQueue.main.async {
-            self.isRecording = true
-        }
+        isRecording = true
     }
 
     func stop() {
@@ -143,9 +139,7 @@ final class CoverageChatSpeechTranscriber: NSObject, ObservableObject {
 
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
 
-        DispatchQueue.main.async {
-            self.isRecording = false
-        }
+        isRecording = false
     }
 
     func cancelRecognitionSession() {
@@ -159,15 +153,5 @@ final class CoverageChatSpeechTranscriber: NSObject, ObservableObject {
         recognitionTask = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         isRecording = false
-    }
-
-    deinit {
-        if audioEngine.isRunning {
-            audioEngine.stop()
-        }
-        audioEngine.inputNode.removeTap(onBus: 0)
-        recognitionRequest?.endAudio()
-        recognitionTask?.cancel()
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 }

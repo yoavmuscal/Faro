@@ -94,8 +94,10 @@ struct CoverageDashboardView: View {
     @State private var agentChatSending = false
     @State private var voiceDraftPrefix = ""
     @State private var voiceCaptureActive = false
+    @State private var coverageVoiceConnecting = false
     @FocusState private var agentChatFocused: Bool
     @StateObject private var coverageChatSpeech = CoverageChatSpeechTranscriber()
+    @StateObject private var coverageElevenLabs = ElevenLabsLiveConversationService()
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
 
@@ -121,6 +123,13 @@ struct CoverageDashboardView: View {
         #endif
     }
 
+    /// Mic is actively capturing (on-device speech or live ElevenLabs session).
+    private var coverageVoiceMicIsHot: Bool {
+        if coverageChatSpeech.isRecording { return true }
+        if voiceCaptureActive, case .connected = coverageElevenLabs.state { return true }
+        return false
+    }
+
     private var timeBasedGreeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
         switch hour {
@@ -131,37 +140,58 @@ struct CoverageDashboardView: View {
         }
     }
 
+    @ViewBuilder
     private var priorityBadgesRow: some View {
         let req = sortedCoverage.filter { $0.category == .required }.count
         let rec = sortedCoverage.filter { $0.category == .recommended }.count
         let proj = sortedCoverage.filter { $0.category == .projected }.count
 
-        return Group {
-            if isWideLayout {
-                HStack(spacing: FaroSpacing.sm) {
-                    if req > 0 {
-                        TagPill(text: "\(req) required", icon: "exclamationmark.circle.fill", tint: FaroPalette.danger, expandToFillWidth: true)
+        if req == 0 && rec == 0 && proj == 0 {
+            EmptyView()
+        } else {
+            Group {
+                if isWideLayout {
+                    HStack(spacing: FaroSpacing.sm) {
+                        if req > 0 {
+                            TagPill(
+                                text: "\(req) required",
+                                icon: "exclamationmark.circle.fill",
+                                tint: FaroPalette.danger,
+                                expandToFillWidth: true
+                            )
+                        }
+                        if rec > 0 {
+                            TagPill(
+                                text: "\(rec) recommended",
+                                icon: "star.fill",
+                                tint: FaroPalette.warning,
+                                expandToFillWidth: true
+                            )
+                        }
+                        if proj > 0 {
+                            TagPill(
+                                text: "\(proj) projected",
+                                icon: "arrow.up.right",
+                                tint: FaroPalette.purple,
+                                expandToFillWidth: true
+                            )
+                        }
                     }
-                    if rec > 0 {
-                        TagPill(text: "\(rec) recommended", icon: "star.fill", tint: FaroPalette.warning, expandToFillWidth: true)
-                    }
-                    if proj > 0 {
-                        TagPill(text: "\(proj) projected", icon: "arrow.up.right", tint: FaroPalette.purple, expandToFillWidth: true)
-                    }
-                }
-            } else {
-                FlowLayout(spacing: FaroSpacing.sm) {
-                    if req > 0 {
-                        TagPill(text: "\(req) required", icon: "exclamationmark.circle.fill", tint: FaroPalette.danger)
-                    }
-                    if rec > 0 {
-                        TagPill(text: "\(rec) recommended", icon: "star.fill", tint: FaroPalette.warning)
-                    }
-                    if proj > 0 {
-                        TagPill(text: "\(proj) projected", icon: "arrow.up.right", tint: FaroPalette.purple)
+                } else {
+                    FlowLayout(spacing: FaroSpacing.sm) {
+                        if req > 0 {
+                            TagPill(text: "\(req) required", icon: "exclamationmark.circle.fill", tint: FaroPalette.danger)
+                        }
+                        if rec > 0 {
+                            TagPill(text: "\(rec) recommended", icon: "star.fill", tint: FaroPalette.warning)
+                        }
+                        if proj > 0 {
+                            TagPill(text: "\(proj) projected", icon: "arrow.up.right", tint: FaroPalette.purple)
+                        }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -295,15 +325,9 @@ struct CoverageDashboardView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: isWideLayout ? FaroSpacing.xl : FaroSpacing.lg) {
-                if isWideLayout {
-                    iPadDashboardContent
-                } else {
-                    phoneDashboardContent
-                }
-            }
-            .padding(.top, isWideLayout ? FaroSpacing.lg : FaroSpacing.md)
-            .padding(.bottom, FaroSpacing.xl)
+            unifiedDashboardContent
+                .padding(.top, isWideLayout ? FaroSpacing.lg : FaroSpacing.md)
+                .padding(.bottom, FaroSpacing.xl)
         }
         .faroCanvasBackground()
         .navigationTitle("Coverage")
@@ -335,6 +359,12 @@ struct CoverageDashboardView: View {
                 dashboardAppeared = true
             }
         }
+        .onDisappear {
+            if coverageElevenLabs.state == .connected || coverageElevenLabs.state == .connecting {
+                coverageElevenLabs.suppressAgentPlayback = false
+                coverageElevenLabs.disconnect()
+            }
+        }
         .sheet(item: $showCoverageDetail) { option in
             NavigationStack {
                 CoverageDetailSheet(option: option)
@@ -344,24 +374,35 @@ struct CoverageDashboardView: View {
 
     // MARK: - Layouts
 
-    private var horizontalPagePadding: CGFloat { isWideLayout ? FaroSpacing.xl : FaroSpacing.md }
+    private var horizontalPagePadding: CGFloat { FaroSpacing.dashboardPageHorizontal(isWideLayout: isWideLayout) }
 
-    private var iPadDashboardContent: some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.xl) {
+    private var unifiedDashboardContent: some View {
+        let stackSpacing = isWideLayout ? FaroSpacing.xl : FaroSpacing.lg
+        return VStack(alignment: .leading, spacing: stackSpacing) {
             dashboardHero
                 .opacity(dashboardAppeared ? 1 : 0)
                 .offset(y: dashboardAppeared ? 0 : 14)
+                .animation(.spring(response: 0.5, dampingFraction: 0.82), value: dashboardAppeared)
 
             metricStrip
                 .opacity(dashboardAppeared ? 1 : 0)
                 .offset(y: dashboardAppeared ? 0 : 18)
                 .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.04), value: dashboardAppeared)
 
-            HStack(alignment: .top, spacing: FaroSpacing.lg) {
-                premiumMixColumn
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                confidenceInsightColumn
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            Group {
+                if isWideLayout {
+                    HStack(alignment: .top, spacing: FaroSpacing.lg) {
+                        premiumMixColumn
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        confidenceInsightColumn
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: FaroSpacing.lg) {
+                        premiumMixCard(maxWidth: .infinity, stackVertically: true, fillAvailableHeight: false)
+                        confidenceInsightCard(fillAvailableHeight: false)
+                    }
+                }
             }
             .opacity(dashboardAppeared ? 1 : 0)
             .offset(y: dashboardAppeared ? 0 : 20)
@@ -369,41 +410,44 @@ struct CoverageDashboardView: View {
 
             premiumRangeChartCard
                 .opacity(dashboardAppeared ? 1 : 0)
-            .offset(y: dashboardAppeared ? 0 : 22)
-            .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.12), value: dashboardAppeared)
+                .offset(y: dashboardAppeared ? 0 : 22)
+                .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.12), value: dashboardAppeared)
 
-            HStack(alignment: .top, spacing: FaroSpacing.lg) {
-                coverageGapsCard(fillAvailableHeight: true)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                snapshotActivityCard(fillAvailableHeight: true)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            Group {
+                if isWideLayout {
+                    HStack(alignment: .top, spacing: FaroSpacing.lg) {
+                        coverageGapsCard(fillAvailableHeight: true)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        snapshotActivityCard(fillAvailableHeight: true)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: FaroSpacing.lg) {
+                        coverageGapsCard(fillAvailableHeight: false)
+                        snapshotActivityCard(fillAvailableHeight: false)
+                    }
+                }
             }
             .opacity(dashboardAppeared ? 1 : 0)
             .offset(y: dashboardAppeared ? 0 : 24)
             .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.16), value: dashboardAppeared)
 
             coverageAgentChatCard
+                .opacity(dashboardAppeared ? 1 : 0)
+                .offset(y: dashboardAppeared ? 0 : 26)
+                .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.18), value: dashboardAppeared)
 
             coverageOptionsSectionHeader
+                .opacity(dashboardAppeared ? 1 : 0)
+                .offset(y: dashboardAppeared ? 0 : 28)
+                .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.2), value: dashboardAppeared)
 
             coverageGallery(sortedCoverage: sortedCoverage)
+                .opacity(dashboardAppeared ? 1 : 0)
+                .offset(y: dashboardAppeared ? 0 : 30)
+                .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.22), value: dashboardAppeared)
         }
-        .padding(.horizontal, horizontalPagePadding)
-    }
-
-    private var phoneDashboardContent: some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.lg) {
-            dashboardHero
-            metricStrip
-            premiumMixCard(maxWidth: 320, stackVertically: true, fillAvailableHeight: false)
-            confidenceInsightCard(fillAvailableHeight: false)
-            premiumRangeChartCard
-            coverageGapsCard(fillAvailableHeight: false)
-            snapshotActivityCard(fillAvailableHeight: false)
-            coverageAgentChatCard
-            coverageOptionsSectionHeader
-            coverageGallery(sortedCoverage: sortedCoverage)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, horizontalPagePadding)
     }
 
@@ -456,21 +500,12 @@ struct CoverageDashboardView: View {
     }
 
     private var metricStrip: some View {
-        Group {
-            if isWideLayout {
-                metricTiles
-                    .frame(maxWidth: .infinity)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    metricTiles
-                        .padding(.vertical, 2)
-                }
-            }
-        }
+        metricTiles
+            .frame(maxWidth: .infinity)
     }
 
     private var metricTiles: some View {
-        let tileMinHeight: CGFloat = isWideLayout ? 136 : 0
+        let tileMinHeight = FaroSpacing.dashboardMetricTileMinHeight(isWideLayout: isWideLayout)
         return HStack(alignment: .top, spacing: FaroSpacing.md) {
             FaroDashboardMetricTile(
                 title: "Policies",
@@ -479,8 +514,7 @@ struct CoverageDashboardView: View {
                 icon: "shield.checkered",
                 tint: FaroPalette.purpleDeep
             )
-            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: isWideLayout ? tileMinHeight : nil, alignment: .topLeading)
-            .frame(minWidth: isWideLayout ? 0 : 148)
+            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: tileMinHeight, alignment: .topLeading)
 
             FaroDashboardMetricTile(
                 title: "Est. annual",
@@ -489,8 +523,7 @@ struct CoverageDashboardView: View {
                 icon: "dollarsign.circle.fill",
                 tint: FaroPalette.success
             )
-            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: isWideLayout ? tileMinHeight : nil, alignment: .topLeading)
-            .frame(minWidth: isWideLayout ? 0 : 168)
+            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: tileMinHeight, alignment: .topLeading)
         }
     }
 
@@ -668,7 +701,7 @@ struct CoverageDashboardView: View {
                         }
                     }
                 }
-                .frame(height: isWideLayout ? 220 : 120)
+                .frame(height: isWideLayout ? 220 : 180)
                 .frame(maxWidth: .infinity)
                 .animation(.smooth(duration: 0.7), value: sortedCoverage.count)
             }
@@ -701,6 +734,7 @@ struct CoverageDashboardView: View {
             }
         }
         .faroDashboardCardSurface()
+        .clipShape(RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous))
     }
 
     // MARK: - Insight cards
@@ -820,7 +854,6 @@ struct CoverageDashboardView: View {
                 .foregroundStyle(FaroPalette.ink.opacity(0.4))
         }
         .padding(.top, FaroSpacing.sm)
-        .padding(.horizontal, FaroSpacing.lg)
     }
 
     private var coverageGridColumns: [GridItem] {
@@ -867,34 +900,32 @@ struct CoverageDashboardView: View {
                 sectionTitle("Ask Faro", subtitle: "Your advisor for this analysis — type or speak naturally.")
             }
 
-            ZStack(alignment: .topLeading) {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: FaroSpacing.md + 2) {
-                            if agentChatLines.isEmpty {
-                                VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-                                    Text("\(timeBasedGreeting) — when you’re ready, ask anything about premiums, gaps, or what to do next. There’s no script.")
-                                        .font(FaroType.body())
-                                        .foregroundStyle(FaroPalette.ink.opacity(0.72))
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.top, FaroSpacing.xs)
-                            } else {
-                                ForEach(agentChatLines) { line in
-                                    AgentChatLineRow(line: line)
-                                        .id(line.id)
-                                }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: FaroSpacing.md + 2) {
+                        if agentChatLines.isEmpty {
+                            VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                                Text("\(timeBasedGreeting) — when you’re ready, ask anything about premiums, gaps, or what to do next. There’s no script.")
+                                    .font(FaroType.body())
+                                    .foregroundStyle(FaroPalette.ink.opacity(0.72))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, FaroSpacing.xs)
+                        } else {
+                            ForEach(agentChatLines) { line in
+                                AgentChatLineRow(line: line)
+                                    .id(line.id)
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(height: chatMessageAreaHeight)
-                    .onChange(of: agentChatLines.count) { _, _ in
-                        if let last = agentChatLines.last?.id {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo(last, anchor: .bottom)
-                            }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: chatMessageAreaHeight)
+                .onChange(of: agentChatLines.count) { _, _ in
+                    if let last = agentChatLines.last?.id {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(last, anchor: .bottom)
                         }
                     }
                 }
@@ -910,44 +941,62 @@ struct CoverageDashboardView: View {
                 }
             }
 
+            if coverageVoiceConnecting {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .tint(FaroPalette.purpleDeep)
+                    Text("Connecting voice (ElevenLabs)…")
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                }
+            }
+
             if let err = coverageChatSpeech.lastError, !err.isEmpty {
                 Text(err)
                     .font(FaroType.caption())
                     .foregroundStyle(FaroPalette.danger.opacity(0.9))
             }
 
-            HStack(alignment: .bottom, spacing: FaroSpacing.sm) {
+            HStack(alignment: .center, spacing: 12) {
                 Button {
                     toggleVoiceCapture()
                 } label: {
-                    Image(systemName: coverageChatSpeech.isRecording ? "mic.fill" : "mic")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(
-                            coverageChatSpeech.isRecording ? Color.white : FaroPalette.purpleDeep
-                        )
-                        .frame(width: 44, height: 44)
-                        .background {
-                            Circle()
-                                .fill(
-                                    coverageChatSpeech.isRecording
-                                        ? FaroPalette.danger.opacity(0.92)
-                                        : FaroPalette.surface.opacity(0.55)
+                    ZStack {
+                        Circle()
+                            .fill(
+                                coverageVoiceMicIsHot
+                                    ? FaroPalette.danger.opacity(0.92)
+                                    : FaroPalette.surface.opacity(0.55)
+                            )
+                            .overlay {
+                                Circle()
+                                    .strokeBorder(FaroPalette.glassStroke.opacity(0.35), lineWidth: 0.5)
+                            }
+                        if coverageVoiceConnecting {
+                            ProgressView()
+                                .tint(FaroPalette.purpleDeep)
+                                .scaleEffect(0.85)
+                        } else {
+                            Image(systemName: coverageVoiceMicIsHot ? "mic.fill" : "mic")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(
+                                    coverageVoiceMicIsHot ? Color.white : FaroPalette.purpleDeep
                                 )
-                                .overlay {
-                                    Circle()
-                                        .strokeBorder(FaroPalette.glassStroke.opacity(0.35), lineWidth: 0.5)
-                                }
                         }
+                    }
+                    .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(coverageChatSpeech.isRecording ? "Stop dictation" : "Dictate message")
+                .disabled(coverageVoiceConnecting)
+                .accessibilityLabel(coverageVoiceMicIsHot ? "Stop dictation" : "Voice input (ElevenLabs)")
 
                 TextField("Write a message…", text: $agentChatDraft, axis: .vertical)
                     .font(FaroType.body())
-                    .lineLimit(2...10)
-                    .padding(.horizontal, FaroSpacing.md)
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .topLeading)
+                    .lineLimit(2...8)
+                    .multilineTextAlignment(.leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
                     .faroGlassCard(cornerRadius: FaroRadius.xl)
                     .focused($agentChatFocused)
 
@@ -955,8 +1004,9 @@ struct CoverageDashboardView: View {
                     sendAgentChat()
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 34))
+                        .font(.system(size: 28, weight: .semibold))
                         .foregroundStyle(FaroPalette.purpleDeep)
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
                 .disabled(agentChatDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || agentChatSending)
@@ -966,12 +1016,34 @@ struct CoverageDashboardView: View {
             }
         }
         .onChange(of: coverageChatSpeech.partialTranscript) { _, new in
-            guard voiceCaptureActive else { return }
+            guard voiceCaptureActive, coverageChatSpeech.isRecording else { return }
             let sep = voiceDraftPrefix.isEmpty ? "" : " "
             agentChatDraft = voiceDraftPrefix + sep + new
         }
+        .onChange(of: coverageElevenLabs.transcript.count) { _, _ in
+            guard voiceCaptureActive, !APIConfig.isDemoModeEnabled else { return }
+            guard case .connected = coverageElevenLabs.state else { return }
+            syncAgentDraftFromElevenLabsTranscript()
+        }
         .faroDashboardCardSurface()
         .overlay { FaroDashboardCardOutline() }
+    }
+
+    private func syncAgentDraftFromElevenLabsTranscript() {
+        let userText = coverageElevenLabs.transcript
+            .filter { $0.role == "user" }
+            .map(\.message)
+            .joined(separator: " ")
+        let sep = voiceDraftPrefix.isEmpty || userText.isEmpty ? "" : " "
+        agentChatDraft = voiceDraftPrefix + sep + userText
+    }
+
+    private func stopCoverageElevenLabsVoiceSession() {
+        coverageElevenLabs.suppressAgentPlayback = false
+        coverageElevenLabs.disconnect()
+        voiceCaptureActive = false
+        voiceDraftPrefix = ""
+        coverageVoiceConnecting = false
     }
 
     private func toggleVoiceCapture() {
@@ -983,17 +1055,55 @@ struct CoverageDashboardView: View {
             coverageChatSpeech.stop()
             return
         }
+
+        if voiceCaptureActive, case .connected = coverageElevenLabs.state {
+            syncAgentDraftFromElevenLabsTranscript()
+            stopCoverageElevenLabsVoiceSession()
+            return
+        }
+
+        if coverageVoiceConnecting { return }
+
         voiceDraftPrefix = agentChatDraft
-        voiceCaptureActive = true
         coverageChatSpeech.clearError()
-        Task {
-            do {
-                try await coverageChatSpeech.start()
-            } catch {
-                await MainActor.run {
+
+        if APIConfig.isDemoModeEnabled {
+            voiceCaptureActive = true
+            Task { @MainActor in
+                do {
+                    try await coverageChatSpeech.start()
+                } catch {
                     voiceCaptureActive = false
                     voiceDraftPrefix = ""
                     coverageChatSpeech.noteError(error.localizedDescription)
+                }
+            }
+            return
+        }
+
+        coverageVoiceConnecting = true
+        coverageElevenLabs.suppressAgentPlayback = true
+        Task { @MainActor in
+            do {
+                let start = try await APIService.shared.startConversation()
+                try await coverageElevenLabs.connect(signedUrl: start.signedUrl)
+                coverageVoiceConnecting = false
+                voiceCaptureActive = true
+                syncAgentDraftFromElevenLabsTranscript()
+            } catch let elError {
+                coverageElevenLabs.suppressAgentPlayback = false
+                coverageElevenLabs.disconnect()
+                coverageVoiceConnecting = false
+                do {
+                    try await coverageChatSpeech.start()
+                    voiceCaptureActive = true
+                    coverageChatSpeech.clearError()
+                } catch {
+                    voiceCaptureActive = false
+                    voiceDraftPrefix = ""
+                    coverageChatSpeech.noteError(
+                        "On-device dictation: \(error.localizedDescription). ElevenLabs: \(elError.localizedDescription)"
+                    )
                 }
             }
         }
@@ -1006,6 +1116,10 @@ struct CoverageDashboardView: View {
             voiceDraftPrefix = ""
             voiceCaptureActive = false
             coverageChatSpeech.stop()
+        }
+        if case .connected = coverageElevenLabs.state {
+            syncAgentDraftFromElevenLabsTranscript()
+            stopCoverageElevenLabsVoiceSession()
         }
         let q = agentChatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty, !agentChatSending else { return }
@@ -1056,8 +1170,8 @@ private struct PremiumBandsTable: View {
         return max(peak * 1.06, 1)
     }
 
-    private var labelColumnWidth: CGFloat { isWideLayout ? 272 : 156 }
-    private var valueColumnWidth: CGFloat { isWideLayout ? 108 : 96 }
+    private var labelColumnWidth: CGFloat { isWideLayout ? 272 : 132 }
+    private var valueColumnWidth: CGFloat { isWideLayout ? 108 : 84 }
     private var barHeight: CGFloat { isWideLayout ? 22 : 20 }
     private var rowVerticalPadding: CGFloat { isWideLayout ? 10 : 8 }
     private var columnGap: CGFloat { FaroSpacing.md }
@@ -1091,27 +1205,41 @@ private struct PremiumBandsTable: View {
     }
 
     private var premiumAxisRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: columnGap) {
+        HStack(alignment: .center, spacing: columnGap) {
             Color.clear
                 .frame(width: labelColumnWidth)
                 .accessibilityHidden(true)
 
-            HStack {
-                Text("$0")
-                Spacer(minLength: 8)
-                Text(maxDomain / 2, format: .currency(code: "USD").precision(.fractionLength(0)))
-                Spacer(minLength: 8)
-                Text(maxDomain, format: .currency(code: "USD").precision(.fractionLength(0)))
+            ViewThatFits(in: .horizontal) {
+                axisLabels(showsMidpoint: true)
+                axisLabels(showsMidpoint: false)
             }
-            .font(FaroType.caption2())
-            .foregroundStyle(FaroPalette.ink.opacity(0.42))
-            .monospacedDigit()
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .center)
 
             Color.clear
                 .frame(width: valueColumnWidth)
                 .accessibilityHidden(true)
         }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func axisLabels(showsMidpoint: Bool) -> some View {
+        HStack(spacing: 0) {
+            Text("$0")
+            Spacer(minLength: 8)
+            if showsMidpoint {
+                Text(maxDomain / 2, format: .currency(code: "USD").precision(.fractionLength(0)))
+                Spacer(minLength: 8)
+            }
+            Text(maxDomain, format: .currency(code: "USD").precision(.fractionLength(0)))
+        }
+        .font(FaroType.caption2())
+        .foregroundStyle(FaroPalette.ink.opacity(0.42))
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.65)
+        .multilineTextAlignment(.center)
     }
 }
 
@@ -1168,9 +1296,11 @@ private struct PremiumBandRow: View {
                         .offset(x: lowX)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .clipped()
             }
             .frame(height: max(barHeight, 28))
             .frame(maxWidth: .infinity)
+            .clipped()
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text("$\(Int(option.premiumMidpoint).formatted())")

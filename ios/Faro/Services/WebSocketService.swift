@@ -7,8 +7,13 @@ final class WebSocketService: NSObject, ObservableObject {
     @Published var isConnected = false
 
     private var task: URLSessionWebSocketTask?
+    private var demoSimulationTask: Task<Void, Never>?
     private let sessionId: String
     private let baseURL: String
+
+    private var isOfflineDemoSession: Bool {
+        APIConfig.isDemoModeEnabled && FaroDemoData.isDemoSessionId(sessionId)
+    }
 
     init(sessionId: String, baseURL: String? = nil) {
         self.sessionId = sessionId
@@ -16,6 +21,27 @@ final class WebSocketService: NSObject, ObservableObject {
     }
 
     func connect(accessToken: String? = nil) {
+        demoSimulationTask?.cancel()
+        demoSimulationTask = nil
+
+        if isOfflineDemoSession {
+            stepUpdates = []
+            isConnected = true
+            let intake = FaroDemoData.loadPendingIntake() ?? FaroDemoData.sampleGuidedIntake()
+            let steps = FaroDemoData.demoPipelineSteps(for: intake)
+            demoSimulationTask = Task { @MainActor in
+                for (step, summary) in steps {
+                    guard !Task.isCancelled else { return }
+                    apply(StepUpdate(step: step, status: .running, summary: ""))
+                    try? await Task.sleep(nanoseconds: 550_000_000)
+                    guard !Task.isCancelled else { return }
+                    apply(StepUpdate(step: step, status: .complete, summary: summary))
+                    try? await Task.sleep(nanoseconds: 280_000_000)
+                }
+            }
+            return
+        }
+
         let url = URL(string: "\(baseURL)/ws/\(sessionId)")!
         var request = URLRequest(url: url)
         if let accessToken {
@@ -28,6 +54,8 @@ final class WebSocketService: NSObject, ObservableObject {
     }
 
     func disconnect() {
+        demoSimulationTask?.cancel()
+        demoSimulationTask = nil
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
         isConnected = false

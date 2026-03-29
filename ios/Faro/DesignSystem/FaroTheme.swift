@@ -30,6 +30,16 @@ enum FaroSpacing {
     static let md: CGFloat = 16
     static let lg: CGFloat = 24
     static let xl: CGFloat = 32
+
+    /// Horizontal inset for dashboard-style tabs (Coverage, Risk, Submission) so edges line up across devices.
+    static func dashboardPageHorizontal(isWideLayout: Bool) -> CGFloat {
+        isWideLayout ? xl : md
+    }
+
+    /// Minimum height for paired metric tiles (iPhone uses fixed row; iPad matches the same rhythm).
+    static func dashboardMetricTileMinHeight(isWideLayout: Bool) -> CGFloat {
+        isWideLayout ? 136 : 140
+    }
 }
 
 enum FaroType {

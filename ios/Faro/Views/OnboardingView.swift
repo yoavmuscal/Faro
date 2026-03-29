@@ -307,6 +307,7 @@ struct OnboardingView: View {
             withAnimation(.easeOut(duration: 0.8)) { appeared = true }
             vm.prefillContact(firstName: appState.userFirstName, lastName: appState.userLastName)
             if isDemo {
+                APIConfig.setDemoModeEnabled(true)
                 vm.loadDemoData()
             }
         }

@@ -26,6 +26,8 @@ private struct ProfileAvatarPhotoPicker: View {
                         Image(uiImage: uiImage)
                             .resizable()
                             .scaledToFill()
+                            .frame(width: 96, height: 96)
+                            .clipped()
                             .clipShape(Circle())
                             .overlay { Circle().strokeBorder(.white.opacity(0.3), lineWidth: 2) }
                     } else {
@@ -43,9 +45,9 @@ private struct ProfileAvatarPhotoPicker: View {
                                     .foregroundStyle(.white)
                             }
                             .overlay { Circle().strokeBorder(.white.opacity(0.2), lineWidth: 2) }
+                            .frame(width: 96, height: 96)
                     }
                 }
-                .frame(width: 96, height: 96)
 
                 ZStack {
                     Circle()
@@ -57,6 +59,7 @@ private struct ProfileAvatarPhotoPicker: View {
                 }
                 .shadow(color: FaroPalette.purpleDeep.opacity(0.4), radius: 6, y: 2)
             }
+            .fixedSize(horizontal: true, vertical: true)
         }
         .buttonStyle(.plain)
     }
@@ -72,35 +75,39 @@ struct FaroSettingsView: View {
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isLoadingPhoto = false
 
+    @AppStorage(APIConfig.demoModeUserDefaultsKey) private var offlineDemoMode = false
+    @State private var localBackendDraft = ""
+    @State private var displayedHttpBaseURL = ""
+
     private var isIPad: Bool { hSizeClass == .regular }
 
     var body: some View {
         ScrollView {
             VStack(spacing: FaroSpacing.lg) {
                 greetingLine
-                    .padding(.horizontal, FaroSpacing.md)
 
                 profileHero
-                    .padding(.horizontal, FaroSpacing.md)
 
                 unifiedStatusCard
-                    .padding(.horizontal, FaroSpacing.md)
+
+                offlineDemoCard
 
                 getStartedCard
-                    .padding(.horizontal, FaroSpacing.md)
+
+                if APIConfig.showsDeviceBackendURLOptions {
+                    localBackendServerCard
+                }
 
                 aboutCard
-                    .padding(.horizontal, FaroSpacing.md)
 
                 legalCard
-                    .padding(.horizontal, FaroSpacing.md)
 
                 signOutButton
-                    .padding(.horizontal, FaroSpacing.md)
 
                 Spacer(minLength: 40)
             }
             .padding(.top, FaroSpacing.md)
+            .padding(.horizontal, FaroSpacing.dashboardPageHorizontal(isWideLayout: isIPad))
             .frame(maxWidth: isIPad ? 620 : .infinity)
             .frame(maxWidth: .infinity)
         }
@@ -112,6 +119,54 @@ struct FaroSettingsView: View {
         .onChange(of: selectedPhoto) { _, newItem in
             Task { await loadProfilePhoto(from: newItem) }
         }
+        .onChange(of: offlineDemoMode) { _, _ in
+            NotificationCenter.default.post(name: .faroDemoModeDidChange, object: nil)
+        }
+        .onAppear {
+            syncLocalBackendURLFields()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .faroHTTPBaseURLDidChange)) { _ in
+            syncLocalBackendURLFields()
+        }
+    }
+
+    private func syncLocalBackendURLFields() {
+        displayedHttpBaseURL = APIConfig.httpBaseURL
+        localBackendDraft = APIConfig.storedHttpBaseURLOverride ?? ""
+    }
+
+    private func saveLocalBackendOverride() {
+        if localBackendDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            APIConfig.setHttpBaseURLOverride(nil)
+        } else {
+            APIConfig.setHttpBaseURLOverride(localBackendDraft)
+        }
+        syncLocalBackendURLFields()
+    }
+
+    // MARK: - Offline demo (device / no backend)
+
+    private var offlineDemoCard: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            SectionHeader(title: "Offline demo", icon: "iphone", tint: FaroPalette.info)
+                .padding(.horizontal, FaroSpacing.xs)
+
+            Toggle(isOn: $offlineDemoMode) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Use on-device sample analysis")
+                        .font(FaroType.subheadline(.semibold))
+                        .foregroundStyle(FaroPalette.ink)
+                    Text("Skips your Faro API and Gemini — full coverage, risk, and submission UI with the data you enter (or Quick Demo). For real iPhone builds without backend env files.")
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.52))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(FaroPalette.purpleDeep)
+        }
+        .padding(FaroSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faroGlassCard(cornerRadius: FaroRadius.xl)
     }
 
     // MARK: - Greeting
@@ -326,6 +381,58 @@ struct FaroSettingsView: View {
                     .padding(.vertical, FaroSpacing.xs)
                 auth0InlineSection
             }
+        }
+        .padding(FaroSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faroGlassCard(cornerRadius: FaroRadius.xl)
+    }
+
+    private var localBackendServerCard: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            SectionHeader(title: "Backend on a real device", icon: "network", tint: FaroPalette.info)
+                .padding(.horizontal, FaroSpacing.xs)
+
+            Text(
+                "On a physical iPhone or iPad, “localhost” is the device—not your Mac. Run the API from the repo (`./backend/run.sh`), use the same Wi‑Fi as this device, enter your Mac’s IP with port 8000, then Save."
+            )
+            .font(FaroType.caption())
+            .foregroundStyle(FaroPalette.ink.opacity(0.55))
+            .fixedSize(horizontal: false, vertical: true)
+
+            TextField("http://192.168.1.12:8000", text: $localBackendDraft)
+                .font(FaroType.body())
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .keyboardType(.URL)
+                #endif
+
+            HStack(spacing: FaroSpacing.sm) {
+                Button {
+                    saveLocalBackendOverride()
+                } label: {
+                    Text("Save")
+                        .font(FaroType.subheadline(.semibold))
+                        .frame(minWidth: 88, minHeight: 40)
+                }
+                .buttonStyle(.faroGradient)
+
+                if APIConfig.storedHttpBaseURLOverride != nil {
+                    Button("Clear") {
+                        APIConfig.setHttpBaseURLOverride(nil)
+                        localBackendDraft = ""
+                        syncLocalBackendURLFields()
+                    }
+                    .font(FaroType.subheadline(.semibold))
+                    .foregroundStyle(FaroPalette.danger)
+                }
+            }
+
+            Text("Using: \(displayedHttpBaseURL)")
+                .font(FaroType.caption(.medium))
+                .foregroundStyle(FaroPalette.ink.opacity(0.65))
+                .textSelection(.enabled)
         }
         .padding(FaroSpacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
