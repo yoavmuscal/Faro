@@ -37,6 +37,9 @@ struct FaroRootView: View {
     @EnvironmentObject private var appState: FaroAppState
     @EnvironmentObject private var authManager: AuthManager
     @State private var section: FaroSection = .home
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+
+    private var isIPad: Bool { hSizeClass == .regular }
 
     /// True while Auth0 is enabled and we still need to read the keychain before trusting ``isLoggedIn``.
     /// Avoids a one-frame (or longer) flash of ``Auth0GateView`` for returning users: ``isLoggedIn`` starts `false` until ``AuthManager/refreshLoginState()`` finishes.
@@ -104,36 +107,68 @@ struct FaroRootView: View {
 
     @ViewBuilder
     private var mainContent: some View {
+        if isIPad {
+            if #available(iOS 18.0, *) {
+                iPadAdaptiveTabView
+            } else {
+                legacyTabView
+            }
+        } else {
+            legacyTabView
+        }
+    }
+
+    // MARK: - iPad: Sidebar-adaptable tab view (iOS 18+)
+    // Sidebar open → shows a full left-hand sidebar.
+    // Sidebar closed → collapses into a compact top bar.
+    // iPhone → ignored; legacyTabView is used instead.
+
+    @available(iOS 18.0, *)
+    private var iPadAdaptiveTabView: some View {
         TabView(selection: $section) {
-            NavigationStack {
-                HomeView(selectedSection: $section)
+            Tab(FaroSection.home.title,       systemImage: FaroSection.home.systemImage,       value: FaroSection.home) {
+                NavigationStack { HomeView(selectedSection: $section) }
             }
-            .tabItem { Label(FaroSection.home.title, systemImage: FaroSection.home.systemImage) }
-            .tag(FaroSection.home)
+            Tab(FaroSection.coverage.title,   systemImage: FaroSection.coverage.systemImage,   value: FaroSection.coverage) {
+                NavigationStack { coverageRoot }
+            }
+            Tab(FaroSection.riskProfile.title, systemImage: FaroSection.riskProfile.systemImage, value: FaroSection.riskProfile) {
+                NavigationStack { riskProfileRoot }
+            }
+            Tab(FaroSection.submission.title, systemImage: FaroSection.submission.systemImage, value: FaroSection.submission) {
+                NavigationStack { submissionRoot }
+            }
+            Tab(FaroSection.profile.title,    systemImage: FaroSection.profile.systemImage,    value: FaroSection.profile) {
+                NavigationStack { FaroSettingsView() }
+            }
+        }
+        .tabViewStyle(.sidebarAdaptable)
+        .tint(FaroPalette.purpleDeep)
+    }
 
-            NavigationStack {
-                coverageRoot
-            }
-            .tabItem { Label(FaroSection.coverage.title, systemImage: FaroSection.coverage.systemImage) }
-            .tag(FaroSection.coverage)
+    // MARK: - iPhone (and iPad iOS 17 fallback): Bottom tab bar
 
-            NavigationStack {
-                riskProfileRoot
-            }
-            .tabItem { Label(FaroSection.riskProfile.title, systemImage: FaroSection.riskProfile.systemImage) }
-            .tag(FaroSection.riskProfile)
+    private var legacyTabView: some View {
+        TabView(selection: $section) {
+            NavigationStack { HomeView(selectedSection: $section) }
+                .tabItem { Label(FaroSection.home.title,        systemImage: FaroSection.home.systemImage) }
+                .tag(FaroSection.home)
 
-            NavigationStack {
-                submissionRoot
-            }
-            .tabItem { Label(FaroSection.submission.title, systemImage: FaroSection.submission.systemImage) }
-            .tag(FaroSection.submission)
+            NavigationStack { coverageRoot }
+                .tabItem { Label(FaroSection.coverage.title,    systemImage: FaroSection.coverage.systemImage) }
+                .tag(FaroSection.coverage)
 
-            NavigationStack {
-                FaroSettingsView()
-            }
-            .tabItem { Label(FaroSection.profile.title, systemImage: FaroSection.profile.systemImage) }
-            .tag(FaroSection.profile)
+            NavigationStack { riskProfileRoot }
+                .tabItem { Label(FaroSection.riskProfile.title, systemImage: FaroSection.riskProfile.systemImage) }
+                .tag(FaroSection.riskProfile)
+
+            NavigationStack { submissionRoot }
+                .tabItem { Label(FaroSection.submission.title,  systemImage: FaroSection.submission.systemImage) }
+                .tag(FaroSection.submission)
+
+            NavigationStack { FaroSettingsView() }
+                .tabItem { Label(FaroSection.profile.title,     systemImage: FaroSection.profile.systemImage) }
+                .tag(FaroSection.profile)
         }
         .tint(FaroPalette.purpleDeep)
     }

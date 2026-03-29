@@ -137,33 +137,16 @@ struct HomeView: View {
             RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [
-                            FaroPalette.purpleDeep,
-                            FaroPalette.purple.opacity(0.85),
-                        ],
+                        colors: [FaroPalette.purpleDeep, FaroPalette.purple],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
-                .overlay {
-                    RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    .white.opacity(0.12),
-                                    .white.opacity(0.0),
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                }
         }
         .overlay {
             RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
-                .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
+                .strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
         }
-        .shadow(color: FaroPalette.purpleDeep.opacity(0.35), radius: 20, y: 8)
     }
 
     @ViewBuilder
@@ -213,7 +196,7 @@ struct HomeView: View {
             HStack(spacing: FaroSpacing.md) {
                 // Icon
                 ZStack {
-                    RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                    Circle()
                         .fill(
                             LinearGradient(
                                 colors: cfg.gradient,
@@ -221,12 +204,11 @@ struct HomeView: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 48, height: 48)
+                        .frame(width: 46, height: 46)
                     Image(systemName: cfg.icon)
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.white)
                 }
-                .shadow(color: cfg.gradient.first?.opacity(0.3) ?? .clear, radius: 8, y: 3)
 
                 // Content
                 VStack(alignment: .leading, spacing: 4) {
@@ -265,6 +247,7 @@ struct HomeView: View {
     private var getStartedCard: some View {
         VStack(alignment: .leading, spacing: FaroSpacing.md) {
             SectionHeader(title: "Get Started", icon: "sparkles", tint: FaroPalette.purpleDeep)
+                .padding(.horizontal, FaroSpacing.xs)
 
             if APIConfig.auth0MissingClientIdOnly {
                 homeAuthWarningBanner
@@ -272,7 +255,7 @@ struct HomeView: View {
                 homeAuthSignInPrompt
             }
 
-            VStack(spacing: FaroSpacing.sm) {
+            VStack(spacing: FaroSpacing.xs) {
                 NavigationLink { OnboardingView() } label: {
                     homeIntakeRow(
                         title: "Guided Questionnaire",
@@ -281,9 +264,7 @@ struct HomeView: View {
                         iconColor: FaroPalette.purpleDeep
                     )
                 }
-                .buttonStyle(.plain)
-
-                Divider().opacity(0.4)
+                .buttonStyle(.faroScale)
 
                 NavigationLink { VoiceIntakeView() } label: {
                     homeIntakeRow(
@@ -293,14 +274,12 @@ struct HomeView: View {
                         iconColor: FaroPalette.info
                     )
                 }
-                .buttonStyle(.plain)
-
-                Divider().opacity(0.4)
+                .buttonStyle(.faroScale)
 
                 NavigationLink { OnboardingView(isDemo: true) } label: {
                     homeIntakeDemoRow
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.faroScale)
             }
         }
         .padding(FaroSpacing.md)
@@ -309,15 +288,15 @@ struct HomeView: View {
     }
 
     private func homeIntakeRow(title: String, subtitle: String, icon: String, iconColor: Color) -> some View {
-        HStack(spacing: FaroSpacing.md) {
-            ZStack {
-                RoundedRectangle(cornerRadius: FaroRadius.sm, style: .continuous)
-                    .fill(iconColor.opacity(0.12))
-                    .frame(width: 38, height: 38)
-                Image(systemName: icon)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(iconColor)
-            }
+        HStack(spacing: FaroSpacing.sm) {
+            Circle()
+                .fill(iconColor.opacity(0.13))
+                .frame(width: 40, height: 40)
+                .overlay {
+                    Image(systemName: icon)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(iconColor)
+                }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -332,22 +311,31 @@ struct HomeView: View {
             Spacer(minLength: 0)
 
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(FaroPalette.ink.opacity(0.25))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.22))
         }
-        .padding(.vertical, FaroSpacing.xs)
+        .padding(.horizontal, FaroSpacing.sm)
+        .padding(.vertical, 11)
+        .background {
+            Capsule(style: .continuous)
+                .fill(FaroPalette.surface.opacity(0.5))
+        }
+        .overlay {
+            Capsule(style: .continuous)
+                .strokeBorder(FaroPalette.glassStroke.opacity(0.25), lineWidth: 0.5)
+        }
     }
 
     private var homeIntakeDemoRow: some View {
-        HStack(spacing: FaroSpacing.md) {
-            ZStack {
-                RoundedRectangle(cornerRadius: FaroRadius.sm, style: .continuous)
-                    .fill(FaroPalette.purple.opacity(0.12))
-                    .frame(width: 38, height: 38)
-                Image(systemName: "play.circle.fill")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(FaroPalette.purple)
-            }
+        HStack(spacing: FaroSpacing.sm) {
+            Circle()
+                .fill(FaroPalette.purple.opacity(0.13))
+                .frame(width: 40, height: 40)
+                .overlay {
+                    Image(systemName: "play.fill")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(FaroPalette.purple)
+                }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -367,10 +355,19 @@ struct HomeView: View {
             Spacer(minLength: 0)
 
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(FaroPalette.ink.opacity(0.25))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.22))
         }
-        .padding(.vertical, FaroSpacing.xs)
+        .padding(.horizontal, FaroSpacing.sm)
+        .padding(.vertical, 11)
+        .background {
+            Capsule(style: .continuous)
+                .fill(FaroPalette.surface.opacity(0.5))
+        }
+        .overlay {
+            Capsule(style: .continuous)
+                .strokeBorder(FaroPalette.glassStroke.opacity(0.25), lineWidth: 0.5)
+        }
     }
 
     private var homeAuthWarningBanner: some View {
@@ -387,15 +384,16 @@ struct HomeView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(FaroSpacing.sm)
+        .padding(.horizontal, FaroSpacing.md)
+        .padding(.vertical, FaroSpacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+            Capsule(style: .continuous)
                 .fill(FaroPalette.warning.opacity(0.08))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
-                .strokeBorder(FaroPalette.warning.opacity(0.3), lineWidth: 0.5)
+            Capsule(style: .continuous)
+                .strokeBorder(FaroPalette.warning.opacity(0.28), lineWidth: 0.5)
         }
     }
 

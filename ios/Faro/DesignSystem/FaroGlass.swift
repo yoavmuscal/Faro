@@ -1,6 +1,7 @@
 import SwiftUI
 
 // MARK: - Glass Card (translucent, frosted)
+// Uses regularMaterial so the Liquid Glass environment colour bleeds through.
 
 struct FaroGlassCard: ViewModifier {
     var cornerRadius: CGFloat = FaroRadius.lg
@@ -9,17 +10,17 @@ struct FaroGlassCard: ViewModifier {
         content
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
+                    .fill(.regularMaterial)
                     .overlay {
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .fill(FaroPalette.surface.opacity(0.45))
+                            .fill(FaroPalette.surface.opacity(0.28))
                     }
             }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(
                         LinearGradient(
-                            colors: [.white.opacity(0.35), FaroPalette.glassStroke.opacity(0.2)],
+                            colors: [.white.opacity(0.4), FaroPalette.glassStroke.opacity(0.15)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -36,17 +37,17 @@ struct FaroGlassCapsule: ViewModifier {
         content
             .background {
                 Capsule(style: .continuous)
-                    .fill(.ultraThinMaterial)
+                    .fill(.regularMaterial)
                     .overlay {
                         Capsule(style: .continuous)
-                            .fill(FaroPalette.surface.opacity(0.45))
+                            .fill(FaroPalette.surface.opacity(0.28))
                     }
             }
             .overlay {
                 Capsule(style: .continuous)
                     .strokeBorder(
                         LinearGradient(
-                            colors: [.white.opacity(0.3), FaroPalette.glassStroke.opacity(0.2)],
+                            colors: [.white.opacity(0.4), FaroPalette.glassStroke.opacity(0.15)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -120,7 +121,7 @@ extension View {
     }
 }
 
-// MARK: - Gradient Button Style
+// MARK: - Gradient Button Style (flat pill — no shadow, colour does the work)
 
 struct FaroGradientButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
@@ -143,26 +144,37 @@ struct FaroGradientButtonStyle: ButtonStyle {
             .overlay {
                 if isEnabled {
                     Capsule(style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [.white.opacity(0.25), .white.opacity(0.05)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 1
-                        )
+                        .strokeBorder(.white.opacity(0.18), lineWidth: 0.75)
                 }
             }
-            .shadow(
-                color: isEnabled
-                    ? FaroPalette.purpleDeep.opacity(configuration.isPressed ? 0.15 : 0.3)
-                    : .clear,
-                radius: configuration.isPressed ? 6 : 14,
-                y: configuration.isPressed ? 2 : 5
-            )
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.88 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
     }
+}
+
+// MARK: - Danger Pill Button Style (destructive actions)
+
+struct FaroDangerPillButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(FaroPalette.danger)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(FaroPalette.danger.opacity(0.09))
+            }
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(FaroPalette.danger.opacity(0.28), lineWidth: 0.75)
+            }
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+extension ButtonStyle where Self == FaroDangerPillButtonStyle {
+    static var faroDangerPill: FaroDangerPillButtonStyle { .init() }
 }
 
 extension ButtonStyle where Self == FaroGradientButtonStyle {

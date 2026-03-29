@@ -346,19 +346,10 @@ struct FaroSettingsView: View {
                 Text("Sign Out")
                     .font(FaroType.headline())
             }
-            .foregroundStyle(FaroPalette.danger)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .background {
-                Capsule(style: .continuous)
-                    .fill(FaroPalette.danger.opacity(0.07))
-            }
-            .overlay {
-                Capsule(style: .continuous)
-                    .strokeBorder(FaroPalette.danger.opacity(0.3), lineWidth: 0.5)
-            }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.faroDangerPill)
     }
 
     // MARK: - Helpers
