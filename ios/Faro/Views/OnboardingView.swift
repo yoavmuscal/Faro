@@ -34,6 +34,69 @@ private extension View {
     }
 }
 
+// MARK: - US states (50 + DC, alphabetical by name)
+
+private struct USStateRow: Identifiable {
+    var id: String { code }
+    let code: String
+    let name: String
+}
+
+/// All US states and D.C. for the onboarding state step (two-letter codes).
+private let usStateRows: [USStateRow] = [
+    .init(code: "AL", name: "Alabama"),
+    .init(code: "AK", name: "Alaska"),
+    .init(code: "AZ", name: "Arizona"),
+    .init(code: "AR", name: "Arkansas"),
+    .init(code: "CA", name: "California"),
+    .init(code: "CO", name: "Colorado"),
+    .init(code: "CT", name: "Connecticut"),
+    .init(code: "DE", name: "Delaware"),
+    .init(code: "DC", name: "District of Columbia"),
+    .init(code: "FL", name: "Florida"),
+    .init(code: "GA", name: "Georgia"),
+    .init(code: "HI", name: "Hawaii"),
+    .init(code: "ID", name: "Idaho"),
+    .init(code: "IL", name: "Illinois"),
+    .init(code: "IN", name: "Indiana"),
+    .init(code: "IA", name: "Iowa"),
+    .init(code: "KS", name: "Kansas"),
+    .init(code: "KY", name: "Kentucky"),
+    .init(code: "LA", name: "Louisiana"),
+    .init(code: "ME", name: "Maine"),
+    .init(code: "MD", name: "Maryland"),
+    .init(code: "MA", name: "Massachusetts"),
+    .init(code: "MI", name: "Michigan"),
+    .init(code: "MN", name: "Minnesota"),
+    .init(code: "MS", name: "Mississippi"),
+    .init(code: "MO", name: "Missouri"),
+    .init(code: "MT", name: "Montana"),
+    .init(code: "NE", name: "Nebraska"),
+    .init(code: "NV", name: "Nevada"),
+    .init(code: "NH", name: "New Hampshire"),
+    .init(code: "NJ", name: "New Jersey"),
+    .init(code: "NM", name: "New Mexico"),
+    .init(code: "NY", name: "New York"),
+    .init(code: "NC", name: "North Carolina"),
+    .init(code: "ND", name: "North Dakota"),
+    .init(code: "OH", name: "Ohio"),
+    .init(code: "OK", name: "Oklahoma"),
+    .init(code: "OR", name: "Oregon"),
+    .init(code: "PA", name: "Pennsylvania"),
+    .init(code: "RI", name: "Rhode Island"),
+    .init(code: "SC", name: "South Carolina"),
+    .init(code: "SD", name: "South Dakota"),
+    .init(code: "TN", name: "Tennessee"),
+    .init(code: "TX", name: "Texas"),
+    .init(code: "UT", name: "Utah"),
+    .init(code: "VT", name: "Vermont"),
+    .init(code: "VA", name: "Virginia"),
+    .init(code: "WA", name: "Washington"),
+    .init(code: "WV", name: "West Virginia"),
+    .init(code: "WI", name: "Wisconsin"),
+    .init(code: "WY", name: "Wyoming"),
+]
+
 // MARK: - Onboarding state
 
 @MainActor
@@ -84,7 +147,7 @@ final class OnboardingViewModel: ObservableObject {
         case .contactInfo: return "We'll personalize your reports with their details."
         case .description: return "The more detail, the better we can match you."
         case .employeeCount: return "This helps size workers' comp and liability."
-        case .state: return "State regulations affect your requirements."
+        case .state: return "Pick from the list — rules and filings depend on where you operate."
         case .annualRevenue: return "Revenue drives premium estimates."
         }
     }
@@ -173,6 +236,8 @@ struct OnboardingView: View {
     @EnvironmentObject private var appState: FaroAppState
     @StateObject private var vm = OnboardingViewModel()
     @State private var appeared = false
+    /// Lifts the state step above the footer while the autocomplete panel is open.
+    @State private var stateSuggestionPopupOpen = false
     var isDemo: Bool = false
 
     var body: some View {
@@ -188,6 +253,7 @@ struct OnboardingView: View {
                 questionArea
                     .frame(maxWidth: 480)
                     .frame(maxWidth: .infinity)
+                    .zIndex(stateSuggestionPopupOpen ? 5 : 0)
 
                 Spacer(minLength: FaroSpacing.xl)
 
@@ -229,6 +295,9 @@ struct OnboardingView: View {
                 appState.contactLastName = vm.contactLastName
                 appState.beginNewAnalysis(sessionId: id, businessName: vm.businessName)
             }
+        }
+        .onChange(of: vm.currentField) { _, _ in
+            stateSuggestionPopupOpen = false
         }
         .onAppear {
             withAnimation(.easeOut(duration: 0.8)) { appeared = true }
@@ -351,13 +420,12 @@ struct OnboardingView: View {
                         onSubmit: vm.advance
                     )
                 case .state:
-                    OnboardingQuestionCard(
+                    OnboardingStatePickerCard(
                         icon: vm.fieldIcon,
                         question: vm.fieldQuestion,
                         subtitle: vm.fieldSubtitle,
-                        placeholder: "NJ",
-                        text: $vm.state,
-                        onSubmit: vm.advance
+                        selectedCode: $vm.state,
+                        onSuggestionPopupChange: { stateSuggestionPopupOpen = $0 }
                     )
                 case .annualRevenue:
                     OnboardingQuestionCard(
@@ -440,6 +508,232 @@ struct OnboardingView: View {
             }
             .disabled(!vm.canAdvance || vm.isSubmitting)
             .animation(.easeInOut(duration: 0.25), value: vm.canAdvance)
+        }
+    }
+}
+
+// MARK: - State picker (search + filtered list + browse menu)
+
+private struct OnboardingStatePickerCard: View {
+    let icon: String
+    let question: String
+    let subtitle: String
+    @Binding var selectedCode: String
+    var onSuggestionPopupChange: ((Bool) -> Void)? = nil
+
+    @State private var query: String = ""
+    @State private var isProgrammaticQuery = false
+    @FocusState private var fieldFocused: Bool
+
+    private var filteredRows: [USStateRow] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        if q.isEmpty { return usStateRows }
+        return usStateRows.filter { row in
+            row.name.localizedCaseInsensitiveContains(q)
+                || row.code.localizedCaseInsensitiveContains(q)
+        }
+    }
+
+    /// Floating suggestions only while typing (not the empty “browse all” panel).
+    private var showSuggestionPopup: Bool {
+        guard fieldFocused else { return false }
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+        if queryMatchesCommittedSelection { return false }
+        return true
+    }
+
+    private var queryMatchesCommittedSelection: Bool {
+        guard let row = usStateRows.first(where: { $0.code == selectedCode }) else { return false }
+        return query == "\(row.name) (\(row.code))"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.lg) {
+            VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                Image(systemName: icon)
+                    .font(.title2.weight(.medium))
+                    .foregroundStyle(FaroPalette.purpleDeep)
+                    .symbolRenderingMode(.hierarchical)
+
+                Text(question)
+                    .font(FaroType.title(.bold))
+                    .foregroundStyle(FaroPalette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(subtitle)
+                    .font(FaroType.subheadline())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: FaroSpacing.sm) {
+                TextField("Search state or abbreviation…", text: $query)
+                    .font(FaroType.title3(.medium))
+                    .focused($fieldFocused)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .onSubmit { commitIfSingleMatchOrExactCode() }
+                    .onChange(of: query) { _, newValue in
+                        if isProgrammaticQuery { return }
+                        if !selectedCode.isEmpty {
+                            if let row = usStateRows.first(where: { $0.code == selectedCode }) {
+                                let label = "\(row.name) (\(row.code))"
+                                if newValue != label { selectedCode = "" }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, FaroSpacing.md)
+                    .frame(height: 54)
+                    .background {
+                        RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                            .fill(FaroPalette.surface)
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                            .strokeBorder(
+                                fieldFocused ? FaroPalette.purpleDeep.opacity(0.5) : FaroPalette.glassStroke,
+                                lineWidth: fieldFocused ? 1.5 : 1
+                            )
+                    }
+
+                Menu {
+                    ForEach(usStateRows) { row in
+                        Button {
+                            applySelection(row)
+                        } label: {
+                            Text("\(row.name) (\(row.code))")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(FaroPalette.purpleDeep)
+                        .frame(width: 44, height: 54)
+                        .background {
+                            RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                                .fill(FaroPalette.surface)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                                .strokeBorder(FaroPalette.glassStroke, lineWidth: 1)
+                        }
+                }
+                .accessibilityLabel("Browse all states")
+            }
+            .zIndex(1)
+            .overlay(alignment: .topLeading) {
+                if showSuggestionPopup {
+                    suggestionPopupContent
+                        .offset(y: 54 + FaroSpacing.sm)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: showSuggestionPopup)
+        }
+        .padding(.horizontal, FaroSpacing.sm)
+        .onAppear {
+            syncQueryFromSelectedCode()
+            onSuggestionPopupChange?(showSuggestionPopup)
+        }
+        .onChange(of: selectedCode) { _, _ in syncQueryFromSelectedCode() }
+        .onChange(of: showSuggestionPopup) { _, newValue in
+            onSuggestionPopupChange?(newValue)
+        }
+    }
+
+    private var suggestionPopupContent: some View {
+        Group {
+            if filteredRows.isEmpty {
+                Text("No matches — try a different spelling or use the list button.")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                    .multilineTextAlignment(.leading)
+                    .padding(.horizontal, FaroSpacing.md)
+                    .padding(.vertical, FaroSpacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(filteredRows) { row in
+                            Button {
+                                applySelection(row)
+                                fieldFocused = false
+                            } label: {
+                                HStack {
+                                    Text(row.name)
+                                        .font(FaroType.body(.medium))
+                                        .foregroundStyle(FaroPalette.ink)
+                                    Spacer()
+                                    Text(row.code)
+                                        .font(FaroType.caption(.semibold))
+                                        .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                                }
+                                .padding(.horizontal, FaroSpacing.md)
+                                .padding(.vertical, 12)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    row.code == selectedCode
+                                        ? FaroPalette.purpleDeep.opacity(0.08)
+                                        : Color.clear
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            if row.id != filteredRows.last?.id {
+                                Divider().padding(.leading, FaroSpacing.md)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 220)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                .fill(FaroPalette.surface)
+                .shadow(color: Color.black.opacity(0.12), radius: 16, y: 8)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                .strokeBorder(FaroPalette.glassStroke, lineWidth: 1)
+        }
+    }
+
+    private func syncQueryFromSelectedCode() {
+        guard let row = usStateRows.first(where: { $0.code == selectedCode }) else {
+            if selectedCode.isEmpty { query = "" }
+            return
+        }
+        isProgrammaticQuery = true
+        query = "\(row.name) (\(row.code))"
+        DispatchQueue.main.async {
+            isProgrammaticQuery = false
+        }
+    }
+
+    private func applySelection(_ row: USStateRow) {
+        selectedCode = row.code
+        isProgrammaticQuery = true
+        query = "\(row.name) (\(row.code))"
+        DispatchQueue.main.async {
+            isProgrammaticQuery = false
+        }
+    }
+
+    /// If only one row matches the filter, or the query is a valid two-letter code, commit selection.
+    private func commitIfSingleMatchOrExactCode() {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        if q.isEmpty { return }
+        let rows = filteredRows
+        if rows.count == 1, let only = rows.first {
+            applySelection(only)
+            return
+        }
+        let upper = q.uppercased()
+        if upper.count == 2, let row = usStateRows.first(where: { $0.code == upper }) {
+            applySelection(row)
         }
     }
 }
