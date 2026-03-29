@@ -47,16 +47,28 @@ struct AgentTrackerView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(FaroSpacing.md)
 
-            ScrollView {
-                LazyVStack(spacing: FaroSpacing.sm + 2) {
-                    ForEach(Array(allSteps.enumerated()), id: \.element) { _, step in
-                        StepCard(
-                            step: step,
-                            update: ws.stepUpdates.first(where: { $0.step == step })
-                        )
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: FaroSpacing.sm + 2) {
+                        ForEach(Array(allSteps.enumerated()), id: \.element) { _, step in
+                            StepCard(
+                                step: step,
+                                update: ws.stepUpdates.first(where: { $0.step == step })
+                            )
+                            .id(step)
+                        }
+                    }
+                    .padding(FaroSpacing.md)
+                }
+                .onChange(of: ws.stepUpdates.count) { _, _ in
+                    if let active = allSteps.first(where: { step in
+                        ws.stepUpdates.first(where: { $0.step == step })?.status == .running
+                    }) ?? allSteps.last(where: { step in
+                        ws.stepUpdates.first(where: { $0.step == step })?.status == .complete
+                    }) {
+                        withAnimation { proxy.scrollTo(active, anchor: .center) }
                     }
                 }
-                .padding(FaroSpacing.md)
             }
 
             if let error = errorMessage {
