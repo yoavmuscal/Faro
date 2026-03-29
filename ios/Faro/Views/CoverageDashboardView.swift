@@ -13,9 +13,14 @@ private struct PDFShareDocument: Identifiable {
 @MainActor
 final class CoverageDashboardViewModel: ObservableObject {
     @Published var isPlayingAudio = false
+    @Published var isPreparingAudio = false
     @Published var isGeneratingPDF = false
+    @Published var audioErrorMessage: String?
 
     private var audioPlayer: AVPlayer?
+    private var endObserver: NSObjectProtocol?
+    private var downloadedAudioURL: URL?
+    private var audioLoadTask: Task<Void, Never>?
     let results: ResultsResponse
 
     init(results: ResultsResponse) {
@@ -36,31 +41,89 @@ final class CoverageDashboardViewModel: ObservableObject {
     func playVoiceSummary() {
         guard !results.voiceSummaryUrl.isEmpty else { return }
         preparePlaybackSession()
-        isPlayingAudio = true
+        audioErrorMessage = nil
+        isPreparingAudio = true
+        audioLoadTask?.cancel()
+        removeAudioObserver()
 
-        let urlString: String
-        if results.voiceSummaryUrl.hasPrefix("/") {
-            urlString = APIConfig.httpBaseURL + results.voiceSummaryUrl
-        } else {
-            urlString = results.voiceSummaryUrl
+        audioLoadTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let localURL = try await APIService.shared.downloadAuthenticatedFile(from: results.voiceSummaryUrl)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    self.configureAudioPlayer(fileURL: localURL)
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    self.isPreparingAudio = false
+                    self.isPlayingAudio = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.isPreparingAudio = false
+                    self.isPlayingAudio = false
+                    self.audioErrorMessage = error.localizedDescription
+                }
+            }
         }
+    }
 
-        guard let url = URL(string: urlString) else { return }
-        let item = AVPlayerItem(url: url)
+    func stopAudio() {
+        audioLoadTask?.cancel()
+        audioLoadTask = nil
+        audioPlayer?.pause()
+        audioPlayer = nil
+        removeAudioObserver()
+        cleanupDownloadedAudio()
+        isPreparingAudio = false
+        isPlayingAudio = false
+    }
+
+    private func configureAudioPlayer(fileURL: URL) {
+        cleanupDownloadedAudio()
+        downloadedAudioURL = fileURL
+
+        let item = AVPlayerItem(url: fileURL)
         audioPlayer = AVPlayer(playerItem: item)
-        NotificationCenter.default.addObserver(
+        endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.isPlayingAudio = false }
+            Task { @MainActor in
+                self?.isPlayingAudio = false
+                self?.isPreparingAudio = false
+            }
         }
+
         audioPlayer?.play()
+        isPreparingAudio = false
+        isPlayingAudio = true
     }
 
-    func stopAudio() {
-        audioPlayer?.pause()
-        isPlayingAudio = false
+    private func removeAudioObserver() {
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
+    }
+
+    private func cleanupDownloadedAudio() {
+        if let downloadedAudioURL {
+            try? FileManager.default.removeItem(at: downloadedAudioURL)
+            self.downloadedAudioURL = nil
+        }
+    }
+
+    deinit {
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+        }
+        audioLoadTask?.cancel()
+        if let downloadedAudioURL {
+            try? FileManager.default.removeItem(at: downloadedAudioURL)
+        }
     }
 }
 
@@ -264,16 +327,32 @@ struct CoverageDashboardView: View {
             Button {
                 if vm.isPlayingAudio { vm.stopAudio() } else { vm.playVoiceSummary() }
             } label: {
-                Label(
-                    vm.isPlayingAudio ? "Stop" : "Hear your summary",
-                    systemImage: vm.isPlayingAudio ? "stop.fill" : "speaker.wave.2.fill"
-                )
+                Group {
+                    if vm.isPreparingAudio {
+                        HStack(spacing: FaroSpacing.sm) {
+                            ProgressView()
+                            Text("Loading summary...")
+                        }
+                    } else {
+                        Label(
+                            vm.isPlayingAudio ? "Stop" : "Hear your summary",
+                            systemImage: vm.isPlayingAudio ? "stop.fill" : "speaker.wave.2.fill"
+                        )
+                    }
+                }
                 .font(FaroType.headline())
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
             }
             .buttonStyle(.faroGradient)
-            .disabled(results.voiceSummaryUrl.isEmpty)
+            .disabled(results.voiceSummaryUrl.isEmpty || vm.isPreparingAudio)
+
+            if let audioErrorMessage = vm.audioErrorMessage {
+                Text(audioErrorMessage)
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.danger)
+                    .multilineTextAlignment(.center)
+            }
 
             Button {
                 Task { await exportPDF() }

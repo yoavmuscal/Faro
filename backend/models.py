@@ -383,10 +383,23 @@ class SubmissionLoss(FaroBaseModel):
 
 class SubmissionRequestedCoverage(FaroBaseModel):
     type: Optional[str] = None
+    policy_name: Optional[str] = None
+    application_forms: list[str] = Field(default_factory=list)
+    company_types: list[str] = Field(default_factory=list)
     limits: Optional[str] = None
     deductible: Optional[str] = None
     effective_date: Optional[str] = None
     notes: Optional[str] = None
+
+    @field_validator("policy_name", mode="before")
+    @classmethod
+    def _normalize_policy_name(cls, value: Any) -> Optional[str]:
+        return _meaningful_string(value)
+
+    @field_validator("application_forms", "company_types", mode="before")
+    @classmethod
+    def _normalize_metadata_list(cls, value: Any) -> list[str]:
+        return _string_list(value)
 
 
 class SubmissionPacket(FaroBaseModel):
@@ -710,6 +723,168 @@ def _default_deductible_for_coverage(coverage_type: str) -> str:
     return "$0"
 
 
+def _submission_market_guidance(coverage_type: str) -> tuple[Optional[str], list[str], list[str]]:
+    name = coverage_type.casefold()
+    if "workers compensation" in name:
+        return (
+            "Workers Compensation and Employers Liability",
+            ["ACORD 130 Workers Compensation Application"],
+            [
+                "Admitted workers compensation carriers",
+                "State funds or assigned-risk plans for tougher placements",
+            ],
+        )
+    if "general liability" in name:
+        return (
+            "Commercial General Liability (CGL)",
+            [
+                "ACORD 125 Applicant Information Section",
+                "ACORD 126 Commercial General Liability Section",
+            ],
+            [
+                "Admitted package and casualty carriers",
+                "Specialty MGA or wholesale markets for tougher classes",
+            ],
+        )
+    if "professional liability" in name or "e&o" in name:
+        return (
+            "Professional Liability / Errors and Omissions",
+            [
+                "ACORD 125 Applicant Information Section",
+                "Carrier-specific professional liability supplemental application",
+            ],
+            [
+                "Specialty professional liability carriers",
+                "Excess and surplus lines carriers for higher-hazard classes",
+            ],
+        )
+    if "commercial auto" in name or "business auto" in name:
+        return (
+            "Business Auto Policy",
+            [
+                "ACORD 125 Applicant Information Section",
+                "ACORD 127 Business Auto Section",
+            ],
+            [
+                "Admitted commercial auto carriers",
+                "Fleet-focused wholesalers or specialty transportation markets",
+            ],
+        )
+    if "commercial property" in name or ("property" in name and "liability" not in name):
+        return (
+            "Commercial Property Coverage",
+            [
+                "ACORD 125 Applicant Information Section",
+                "ACORD 140 Property Section",
+            ],
+            [
+                "Admitted property and package carriers",
+                "Surplus lines property markets for CAT or higher-hazard exposure",
+            ],
+        )
+    if "business owner's policy" in name or "business owners policy" in name or "bop" in name:
+        return (
+            "Businessowners Policy (BOP)",
+            [
+                "ACORD 125 Applicant Information Section",
+                "ACORD 140 Property Section or carrier BOP application",
+            ],
+            [
+                "Admitted small-business package carriers",
+                "Digital small-commercial carriers and BOP-focused MGAs",
+            ],
+        )
+    if "umbrella" in name or "excess" in name:
+        return (
+            "Commercial Umbrella / Excess Liability",
+            [
+                "ACORD 125 Applicant Information Section",
+                "Umbrella or excess liability supplemental application",
+            ],
+            [
+                "Admitted umbrella carriers",
+                "Excess and surplus lines markets for layered liability towers",
+            ],
+        )
+    if "liquor liability" in name:
+        return (
+            "Liquor Liability",
+            [
+                "ACORD 125 Applicant Information Section",
+                "Liquor liability supplemental application",
+            ],
+            [
+                "Specialty hospitality carriers",
+                "Surplus lines carriers or hospitality MGAs",
+            ],
+        )
+    if "product liability" in name:
+        return (
+            "Products / Completed Operations Liability",
+            [
+                "ACORD 125 Applicant Information Section",
+                "ACORD 126 Commercial General Liability Section",
+                "Products liability supplemental application",
+            ],
+            [
+                "Admitted casualty carriers for standard products",
+                "Specialty product liability and excess-surplus markets",
+            ],
+        )
+    if "cyber" in name:
+        return (
+            "Cyber Liability and Data Breach Response",
+            [
+                "ACORD 125 Applicant Information Section",
+                "Carrier-specific cyber supplemental application",
+            ],
+            [
+                "Specialty cyber insurers",
+                "Excess and surplus lines cyber MGAs and wholesalers",
+            ],
+        )
+    if "employment practices" in name or "epli" in name:
+        return (
+            "Employment Practices Liability Insurance (EPLI)",
+            [
+                "ACORD 125 Applicant Information Section",
+                "Employment practices liability supplemental application",
+            ],
+            [
+                "Management liability carriers",
+                "Package carriers or specialty EPLI wholesalers",
+            ],
+        )
+    return (
+        _meaningful_string(coverage_type),
+        [
+            "ACORD 125 Applicant Information Section",
+            "Carrier supplemental application for the requested line",
+        ],
+        [
+            "Admitted commercial carriers",
+            "Specialty MGA or wholesale markets when the class is harder to place",
+        ],
+    )
+
+
+def _strengthen_submission_requested_coverage(
+    item: SubmissionRequestedCoverage,
+) -> SubmissionRequestedCoverage:
+    coverage_type = item.type or ""
+    policy_name, application_forms, company_types = _submission_market_guidance(coverage_type)
+    return SubmissionRequestedCoverage(
+        type=item.type,
+        policy_name=item.policy_name or policy_name,
+        application_forms=item.application_forms or application_forms,
+        company_types=item.company_types or company_types,
+        limits=item.limits or _default_limits_for_coverage(coverage_type),
+        deductible=item.deductible or _default_deductible_for_coverage(coverage_type),
+        effective_date=item.effective_date or date.today().isoformat(),
+        notes=item.notes,
+    )
+
+
 def _normalize_loss_history(payload: Any) -> list[SubmissionLoss]:
     if payload is None:
         return []
@@ -758,13 +933,7 @@ def _normalize_requested_coverages(
     if isinstance(payload, list) and payload:
         validated = [SubmissionRequestedCoverage.model_validate(item) for item in payload]
         strengthened = [
-            SubmissionRequestedCoverage(
-                type=item.type,
-                limits=item.limits or _default_limits_for_coverage(item.type or ""),
-                deductible=item.deductible or _default_deductible_for_coverage(item.type or ""),
-                effective_date=item.effective_date or date.today().isoformat(),
-                notes=item.notes,
-            )
+            _strengthen_submission_requested_coverage(item)
             for item in validated
             if _meaningful_string(item.type)
         ]
@@ -772,12 +941,14 @@ def _normalize_requested_coverages(
             return strengthened
 
     return [
-        SubmissionRequestedCoverage(
-            type=requirement.type,
-            limits=_default_limits_for_coverage(requirement.type),
-            deductible=_default_deductible_for_coverage(requirement.type),
-            effective_date=date.today().isoformat(),
-            notes=requirement.rationale,
+        _strengthen_submission_requested_coverage(
+            SubmissionRequestedCoverage(
+                type=requirement.type,
+                limits=_default_limits_for_coverage(requirement.type),
+                deductible=_default_deductible_for_coverage(requirement.type),
+                effective_date=date.today().isoformat(),
+                notes=requirement.rationale,
+            )
         )
         for requirement in coverage_requirements
         if requirement.category != CoverageCategory.projected

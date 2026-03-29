@@ -38,6 +38,8 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     @Published var state: ConnectionState = .disconnected
     @Published var transcript: [ConvTranscriptTurn] = []
     @Published var isAgentSpeaking: Bool = false
+    @Published var isUserSpeaking: Bool = false
+    @Published var userSpeechLevel: Double = 0
     private nonisolated(unsafe) var _agentSpeaking = false
     private nonisolated(unsafe) var _pendingBuffers: Int32 = 0
 
@@ -243,6 +245,8 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
             self._agentSpeaking = false
             Task { @MainActor in
                 self.isAgentSpeaking = false
+                self.isUserSpeaking = false
+                self.userSpeechLevel = 0
                 self.transcript.append(ConvTranscriptTurn(role: "user", message: text))
             }
 
@@ -266,6 +270,8 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
             self._pendingBuffers = 0
             Task { @MainActor in
                 self.isAgentSpeaking = false
+                self.isUserSpeaking = false
+                self.userSpeechLevel = 0
                 self.playerNode.stop()
                 self.playerNode.play()
             }
@@ -370,17 +376,31 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
         micConverter = nil
         uplinkPCMFormat = nil
         playbackPCMFormat = nil
+        isAgentSpeaking = false
+        isUserSpeaking = false
+        userSpeechLevel = 0
     }
 
     private nonisolated func processMicInput(buffer: AVAudioPCMBuffer) {
         // Suppress echo: don't send mic audio while the agent is speaking.
         // The speaker output bleeds into the mic and ElevenLabs interprets it
         // as user speech, causing the agent to interrupt itself.
-        if _agentSpeaking { return }
+        if _agentSpeaking {
+            Task { @MainActor in
+                self.isUserSpeaking = false
+                self.userSpeechLevel = 0
+            }
+            return
+        }
 
         guard let converter = micConverter,
               let outFormat = uplinkPCMFormat,
               let task = webSocketTask else { return }
+
+        let speechLevel = Self.normalizedSpeechLevel(from: buffer)
+        Task { @MainActor in
+            self.updateUserSpeechActivity(level: speechLevel)
+        }
 
         let ratio = outFormat.sampleRate / buffer.format.sampleRate
         let outCapacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 32
@@ -412,6 +432,43 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
         let chunk = "{\"user_audio_chunk\":\"\(base64)\"}"
 
         task.send(.string(chunk)) { _ in }
+    }
+
+    @MainActor
+    private func updateUserSpeechActivity(level: Double) {
+        let normalized = min(max(level, 0), 1)
+        let smoothed = max(normalized, userSpeechLevel * 0.68)
+        userSpeechLevel = smoothed < 0.02 ? 0 : smoothed
+        isUserSpeaking = userSpeechLevel > 0.08
+    }
+
+    private nonisolated static func normalizedSpeechLevel(from buffer: AVAudioPCMBuffer) -> Double {
+        let sampleCount = Int(buffer.frameLength)
+        guard sampleCount > 0 else { return 0 }
+
+        if let channelData = buffer.floatChannelData {
+            let samples = UnsafeBufferPointer(start: channelData[0], count: sampleCount)
+            var energy = 0.0
+            for sample in samples {
+                let value = Double(sample)
+                energy += value * value
+            }
+            let rms = sqrt(energy / Double(sampleCount))
+            return min(max(rms * 10.0, 0), 1)
+        }
+
+        if let channelData = buffer.int16ChannelData {
+            let samples = UnsafeBufferPointer(start: channelData[0], count: sampleCount)
+            var energy = 0.0
+            for sample in samples {
+                let value = Double(sample) / Double(Int16.max)
+                energy += value * value
+            }
+            let rms = sqrt(energy / Double(sampleCount))
+            return min(max(rms * 10.0, 0), 1)
+        }
+
+        return 0
     }
 
     private func playIncomingAudio(data: Data) {

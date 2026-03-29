@@ -84,6 +84,9 @@ Return JSON with this structure:
   "requested_coverages": [
     {{
       "type": "string",
+      "policy_name": "formal policy name if known, otherwise null",
+      "application_forms": ["specific application or ACORD form names if known"],
+      "company_types": ["types of markets that typically offer this policy"],
       "limits": "string",
       "deductible": "string",
       "effective_date": "YYYY-MM-DD",
@@ -96,6 +99,7 @@ Return JSON with this structure:
 Important:
 - `loss_history` must be an array, not an object
 - `underwriter_notes` must be an array of strings
+- `requested_coverages` should use common market policy names and likely submission forms when you know them
 - `employees`, `revenue`, `payroll`, and `subcontractors` must be nested objects exactly as shown"""
 
 

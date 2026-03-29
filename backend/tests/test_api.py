@@ -120,6 +120,9 @@ class ApiEndpointTests(unittest.TestCase):
         self.assertEqual(names.count("General Liability"), 1)
         self.assertNotIn("Commercial Auto", names)
         self.assertEqual(payload["voice_summary_url"], "")
+        requested = payload["submission_packet"]["requested_coverages"]
+        self.assertEqual(requested[0]["policy_name"], "Commercial General Liability (CGL)")
+        self.assertIn("ACORD 126 Commercial General Liability Section", requested[0]["application_forms"])
 
     def test_status_reflects_pending_complete_and_error(self) -> None:
         with patch.object(

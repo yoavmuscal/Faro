@@ -131,6 +131,35 @@ actor APIService {
         return try decoder.decode(StatusResponse.self, from: data)
     }
 
+    func downloadAuthenticatedFile(from pathOrURL: String) async throws -> URL {
+        guard let resolvedURL = resolvedURL(from: pathOrURL) else {
+            throw APIError(message: "The summary audio URL is invalid.")
+        }
+
+        var request = URLRequest(url: resolvedURL)
+        await applyAuth(&request)
+
+        let (temporaryURL, response) = try await URLSession.shared.download(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        if http.statusCode == 401 {
+            throw APIError(message: "Sign in required or your session expired.")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError(message: "Could not load the summary audio from the server.")
+        }
+
+        let preferredExtension = resolvedURL.pathExtension.isEmpty ? "mp3" : resolvedURL.pathExtension
+        let destinationURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(preferredExtension)
+
+        try? FileManager.default.removeItem(at: destinationURL)
+        try FileManager.default.moveItem(at: temporaryURL, to: destinationURL)
+        return destinationURL
+    }
+
     // MARK: - Helpers
 
     private func validate(_ response: URLResponse, data: Data) throws {
@@ -145,6 +174,13 @@ actor APIService {
         guard (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }
+    }
+
+    private func resolvedURL(from pathOrURL: String) -> URL? {
+        if pathOrURL.hasPrefix("/") {
+            return URL(string: "\(baseURL)\(pathOrURL)")
+        }
+        return URL(string: pathOrURL)
     }
 
     private static func parseFastAPIDetail(_ data: Data) -> String? {

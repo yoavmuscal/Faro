@@ -22,6 +22,23 @@ final class VoiceIntakeViewModel: ObservableObject {
         liveService.transcript
     }
 
+    var isAgentSpeaking: Bool {
+        liveService.isAgentSpeaking
+    }
+
+    var isUserSpeaking: Bool {
+        liveService.isUserSpeaking
+    }
+
+    var userSpeechLevel: Double {
+        liveService.userSpeechLevel
+    }
+
+    var transcriptScrollToken: String {
+        guard let lastTurn = transcript.last else { return "empty" }
+        return "\(transcript.count)|\(lastTurn.role)|\(lastTurn.message)"
+    }
+
     /// True once the user has spoken at least one turn — required before submitting.
     var hasUserTurns: Bool {
         transcript.contains { $0.role == "user" }
@@ -75,6 +92,7 @@ struct VoiceIntakeView: View {
     @EnvironmentObject private var appState: FaroAppState
     @StateObject private var vm = VoiceIntakeViewModel()
     @Environment(\.dismiss) private var dismiss
+    private let transcriptBottomID = "voice-transcript-bottom"
 
     var body: some View {
         Group {
@@ -144,18 +162,35 @@ struct VoiceIntakeView: View {
                 case .connected:
                     ZStack {
                         Circle()
-                            .fill(FaroPalette.purpleDeep.opacity(0.1))
-                            .frame(width: 150, height: 150)
-                            .scaleEffect(1.2)
-                            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: vm.state == .connected)
-                        
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 40))
-                            .foregroundColor(FaroPalette.purpleDeep)
+                            .fill(FaroPalette.purpleDeep.opacity(vm.isUserSpeaking ? 0.18 : 0.08))
+                            .frame(width: 168, height: 168)
+                            .scaleEffect(1.05 + (vm.isUserSpeaking ? (vm.userSpeechLevel * 0.3) : 0.05))
+                            .animation(.easeInOut(duration: 0.18), value: vm.userSpeechLevel)
+
+                        Circle()
+                            .stroke(FaroPalette.purple.opacity(vm.isUserSpeaking ? 0.5 : 0.22), lineWidth: 10)
+                            .frame(width: 132, height: 132)
+                            .scaleEffect(vm.isUserSpeaking ? 1.0 + (vm.userSpeechLevel * 0.14) : 1)
+                            .animation(.easeInOut(duration: 0.16), value: vm.userSpeechLevel)
+
+                        VStack(spacing: FaroSpacing.md) {
+                            Image(systemName: vm.isAgentSpeaking ? "speaker.wave.2.fill" : "mic.fill")
+                                .font(.system(size: 38, weight: .semibold))
+                                .foregroundColor(FaroPalette.purpleDeep)
+
+                            HStack(alignment: .center, spacing: 8) {
+                                ForEach(0..<4, id: \.self) { index in
+                                    Capsule(style: .continuous)
+                                        .fill(FaroPalette.purple.gradient)
+                                        .frame(width: 8, height: speechBarHeight(index: index))
+                                        .animation(.easeInOut(duration: 0.18), value: vm.userSpeechLevel)
+                                }
+                            }
+                        }
                     }
                     .padding(.vertical, FaroSpacing.xl)
                     
-                    Text("Listening...")
+                    Text(connectionStatusLabel)
                         .font(FaroType.headline())
                         .foregroundStyle(FaroPalette.purpleDeep)
                 case .disconnected:
@@ -185,28 +220,40 @@ struct VoiceIntakeView: View {
             Spacer()
             
             // Transcript View
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: FaroSpacing.sm) {
-                    ForEach(Array(vm.transcript.enumerated()), id: \.offset) { _, turn in
-                        HStack {
-                            if turn.role == "user" {
-                                Spacer()
-                                Text(turn.message)
-                                    .padding(12)
-                                    .background(FaroPalette.purpleDeep)
-                                    .foregroundColor(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                            } else {
-                                Text(turn.message)
-                                    .padding(12)
-                                    .background(Color.gray.opacity(0.15))
-                                    .foregroundColor(.primary)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                                Spacer()
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                        ForEach(Array(vm.transcript.enumerated()), id: \.offset) { _, turn in
+                            HStack {
+                                if turn.role == "user" {
+                                    Spacer()
+                                    Text(turn.message)
+                                        .padding(12)
+                                        .background(FaroPalette.purpleDeep)
+                                        .foregroundColor(.white)
+                                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                                } else {
+                                    Text(turn.message)
+                                        .padding(12)
+                                        .background(Color.gray.opacity(0.15))
+                                        .foregroundColor(.primary)
+                                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                                    Spacer()
+                                }
                             }
+                            .padding(.horizontal)
                         }
-                        .padding(.horizontal)
+
+                        Color.clear
+                            .frame(height: 1)
+                            .id(transcriptBottomID)
                     }
+                }
+                .onAppear {
+                    scrollTranscriptToBottom(using: proxy, animated: false)
+                }
+                .onChange(of: vm.transcriptScrollToken) { _, _ in
+                    scrollTranscriptToBottom(using: proxy)
                 }
             }
             .frame(maxHeight: 250)
@@ -247,6 +294,33 @@ struct VoiceIntakeView: View {
             .padding(.horizontal)
             .padding(.bottom, 40)
             .padding(.top, FaroSpacing.lg)
+        }
+    }
+
+    private var connectionStatusLabel: String {
+        if vm.isAgentSpeaking {
+            return "Faro is speaking..."
+        }
+        if vm.isUserSpeaking {
+            return "You're speaking..."
+        }
+        return "Listening..."
+    }
+
+    private func speechBarHeight(index: Int) -> CGFloat {
+        let multipliers: [CGFloat] = [0.55, 1.0, 0.82, 0.68]
+        let activeLevel = CGFloat(max(vm.userSpeechLevel, vm.isAgentSpeaking ? 0.18 : 0.04))
+        return 10 + (activeLevel * 34 * multipliers[index])
+    }
+
+    private func scrollTranscriptToBottom(using proxy: ScrollViewProxy, animated: Bool = true) {
+        let action = {
+            proxy.scrollTo(transcriptBottomID, anchor: .bottom)
+        }
+        if animated {
+            withAnimation(.easeOut(duration: 0.2), action)
+        } else {
+            action()
         }
     }
 }

@@ -109,13 +109,25 @@ struct SubmissionPacketView: View {
 
     private func requestedCoveragesSection(_ coverages: [SubmissionRequestedCoverage]) -> some View {
         VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-            SectionHeader(title: "Requested Coverages", icon: "shield.checkered", tint: FaroPalette.purpleDeep)
+            SectionHeader(title: "Requested Policies", icon: "shield.checkered", tint: FaroPalette.purpleDeep)
+
+            Text("Specific policies, likely submission forms, and the kinds of insurance markets that typically write them.")
+                .font(FaroType.caption())
+                .foregroundStyle(FaroPalette.ink.opacity(0.55))
 
             ForEach(coverages) { cov in
-                VStack(alignment: .leading, spacing: FaroSpacing.xs) {
-                    Text(cov.type ?? "Coverage")
-                        .font(FaroType.subheadline(.semibold))
-                        .foregroundStyle(FaroPalette.ink)
+                VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(cov.policyName ?? cov.type ?? "Coverage")
+                            .font(FaroType.subheadline(.semibold))
+                            .foregroundStyle(FaroPalette.ink)
+
+                        if let type = cov.type, type != cov.policyName {
+                            Text(type)
+                                .font(FaroType.caption())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                        }
+                    }
 
                     HStack(spacing: FaroSpacing.md) {
                         if let limits = cov.limits {
@@ -134,6 +146,24 @@ struct SubmissionPacketView: View {
                             .font(FaroType.caption())
                             .foregroundStyle(FaroPalette.ink.opacity(0.55))
                     }
+
+                    if let forms = cov.applicationForms, !forms.isEmpty {
+                        coverageMetadataBlock(
+                            title: "Likely Forms",
+                            items: forms,
+                            icon: "doc.text.fill",
+                            tint: FaroPalette.info
+                        )
+                    }
+
+                    if let companyTypes = cov.companyTypes, !companyTypes.isEmpty {
+                        coverageMetadataBlock(
+                            title: "Typical Markets",
+                            items: companyTypes,
+                            icon: "building.2.fill",
+                            tint: FaroPalette.purple
+                        )
+                    }
                 }
                 .padding(FaroSpacing.sm + 2)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -143,6 +173,27 @@ struct SubmissionPacketView: View {
         .padding(FaroSpacing.md)
         .faroGlassCard(cornerRadius: FaroRadius.xl)
         .padding(.horizontal, FaroSpacing.md)
+    }
+
+    private func coverageMetadataBlock(title: String, items: [String], icon: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.xs) {
+            Label(title, systemImage: icon)
+                .font(FaroType.caption(.bold))
+                .foregroundStyle(tint)
+
+            ForEach(items, id: \.self) { item in
+                HStack(alignment: .top, spacing: FaroSpacing.xs) {
+                    Image(systemName: "circle.fill")
+                        .font(.system(size: 6))
+                        .foregroundStyle(tint.opacity(0.9))
+                        .padding(.top, 5)
+                    Text(item)
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.72))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
     }
 
     private func lossHistorySection(_ losses: [SubmissionLoss]) -> some View {
@@ -276,8 +327,35 @@ private struct MiniField: View {
                 ),
                 lossHistory: [],
                 requestedCoverages: [
-                    SubmissionRequestedCoverage(type: "General Liability", limits: "$1M / $2M", deductible: "$1,000", effectiveDate: "2026-04-01", notes: nil),
-                    SubmissionRequestedCoverage(type: "Workers Compensation", limits: "Statutory", deductible: "N/A", effectiveDate: "2026-04-01", notes: "12 employees — NJ statutory requirement"),
+                    SubmissionRequestedCoverage(
+                        type: "General Liability",
+                        policyName: "Commercial General Liability (CGL)",
+                        applicationForms: [
+                            "ACORD 125 Applicant Information Section",
+                            "ACORD 126 Commercial General Liability Section",
+                        ],
+                        companyTypes: [
+                            "Admitted package and casualty carriers",
+                            "Specialty MGA or wholesale markets for tougher classes",
+                        ],
+                        limits: "$1M / $2M",
+                        deductible: "$1,000",
+                        effectiveDate: "2026-04-01",
+                        notes: nil
+                    ),
+                    SubmissionRequestedCoverage(
+                        type: "Workers Compensation",
+                        policyName: "Workers Compensation and Employers Liability",
+                        applicationForms: ["ACORD 130 Workers Compensation Application"],
+                        companyTypes: [
+                            "Admitted workers compensation carriers",
+                            "State funds or assigned-risk plans for tougher placements",
+                        ],
+                        limits: "Statutory",
+                        deductible: "N/A",
+                        effectiveDate: "2026-04-01",
+                        notes: "12 employees — NJ statutory requirement"
+                    ),
                 ],
                 underwriterNotes: [
                     "Daycare operations require enhanced abuse & molestation coverage",

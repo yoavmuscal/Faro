@@ -276,6 +276,9 @@ struct SubmissionLoss: Codable {
 
 struct SubmissionRequestedCoverage: Codable, Identifiable {
     let type: String?
+    let policyName: String?
+    let applicationForms: [String]?
+    let companyTypes: [String]?
     let limits: String?
     let deductible: String?
     let effectiveDate: String?
@@ -285,6 +288,9 @@ struct SubmissionRequestedCoverage: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case type, limits, deductible, notes
+        case policyName = "policy_name"
+        case applicationForms = "application_forms"
+        case companyTypes = "company_types"
         case effectiveDate = "effective_date"
     }
 }

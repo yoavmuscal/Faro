@@ -172,6 +172,18 @@ class ContractModelTests(unittest.TestCase):
         self.assertEqual(len(packet.loss_history), 2)
         self.assertEqual(packet.underwriter_notes, ["Background checks completed for all staff."])
         self.assertEqual(packet.requested_coverages[0].type, "General Liability")
+        self.assertEqual(
+            packet.requested_coverages[0].policy_name,
+            "Commercial General Liability (CGL)",
+        )
+        self.assertIn(
+            "ACORD 126 Commercial General Liability Section",
+            packet.requested_coverages[0].application_forms,
+        )
+        self.assertIn(
+            "Admitted package and casualty carriers",
+            packet.requested_coverages[0].company_types,
+        )
 
     def test_results_response_uses_authoritative_schema(self) -> None:
         response = build_results_response(
@@ -219,6 +231,14 @@ class ContractModelTests(unittest.TestCase):
         )
         self.assertEqual(response.submission_packet.operations.employees.total, 12)
         self.assertEqual(response.voice_summary_url, "/audio/test-session")
+        self.assertEqual(
+            response.submission_packet.requested_coverages[0].policy_name,
+            "Cyber Liability and Data Breach Response",
+        )
+        self.assertIn(
+            "Carrier-specific cyber supplemental application",
+            response.submission_packet.requested_coverages[0].application_forms,
+        )
 
 
 if __name__ == "__main__":

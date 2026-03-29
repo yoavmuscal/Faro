@@ -35,8 +35,8 @@ For each applicable policy type, determine:
 - projected: not needed now, but will be needed at a specific growth trigger
 
 Policy types to evaluate (include all that apply):
-- Workers Compensation
-- General Liability
+- Workers Compensation and Employers Liability
+- Commercial General Liability
 - Professional Liability (E&O)
 - Commercial Auto
 - Commercial Property
