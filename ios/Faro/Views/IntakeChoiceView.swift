@@ -23,19 +23,51 @@ struct IntakeChoiceView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                if authManager.isAuthConfigured && !authManager.isLoggedIn {
+                if APIConfig.auth0MissingClientIdOnly {
+                    VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                        Label("Auth0 not ready", systemImage: "exclamationmark.triangle.fill")
+                            .font(FaroType.headline())
+                            .foregroundStyle(FaroPalette.ink)
+                        Text("Add AUTH0_CLIENT_ID in Info.plist (Auth0 Native app Client ID). Open More for details.")
+                            .font(FaroType.caption())
+                            .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Open More") {
+                            appState.openSection("settings")
+                        }
+                        .font(FaroType.subheadline(.semibold))
+                        .tint(FaroPalette.purpleDeep)
+                    }
+                    .padding(FaroSpacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .faroGlassCard(cornerRadius: FaroRadius.lg)
+                } else if authManager.isAuthConfigured && !authManager.isLoggedIn {
                     VStack(alignment: .leading, spacing: FaroSpacing.sm) {
                         Label("Sign in to continue", systemImage: "person.badge.key.fill")
                             .font(FaroType.headline())
                             .foregroundStyle(FaroPalette.ink)
-                        Text("Your Faro API expects an Auth0 access token. Open Settings, sign in with Auth0, then run an analysis.")
+                        Text("Your Faro API expects an Auth0 access token. Sign in below or from More, then run an analysis.")
                             .font(FaroType.caption())
                             .foregroundStyle(FaroPalette.ink.opacity(0.55))
                             .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: FaroSpacing.sm) {
+                            Button {
+                                Task { await authManager.login() }
+                            } label: {
+                                Text("Sign in with Auth0")
+                                    .font(FaroType.subheadline(.semibold))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(FaroPalette.purpleDeep)
+                            Button("More tab") {
+                                appState.openSection("settings")
+                            }
+                            .font(FaroType.subheadline(.medium))
+                        }
                     }
                     .padding(FaroSpacing.md)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .faroGlassCard(cornerRadius: FaroRadius.lg, material: .regularMaterial)
+                    .faroGlassCard(cornerRadius: FaroRadius.lg)
                 }
 
                 VStack(spacing: FaroSpacing.md) {

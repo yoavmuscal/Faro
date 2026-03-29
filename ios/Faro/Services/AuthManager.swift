@@ -32,13 +32,19 @@ final class AuthManager: ObservableObject {
     }
 
     /// Access token for API and WebSocket `Authorization` header.
+    /// Prefers ``CredentialsManager/apiCredentials(forAudience:...)`` so the JWT matches the Auth0 API audience the backend validates.
     func accessToken() async -> String? {
-        guard let credentialsManager else { return nil }
+        guard let credentialsManager, let audience else { return nil }
         do {
-            let credentials = try await credentialsManager.credentials(minTTL: 120)
-            return credentials.accessToken
+            let apiCreds = try await credentialsManager.apiCredentials(forAudience: audience, minTTL: 120)
+            return apiCreds.accessToken
         } catch {
-            return nil
+            do {
+                let credentials = try await credentialsManager.credentials(minTTL: 120)
+                return credentials.accessToken
+            } catch {
+                return nil
+            }
         }
     }
 
@@ -60,7 +66,8 @@ final class AuthManager: ObservableObject {
             let credentials = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Credentials, Error>) in
                 Auth0.webAuth(clientId: clientId, domain: domain)
                     .audience(audience)
-                    .scope("openid profile email")
+                    .scope("openid profile email offline_access")
+                    // Omit useEphemeralSession: ephemeral sessions often break return-to-app / SSO during debugging.
                     .start { result in
                         switch result {
                         case .success(let creds):
@@ -70,7 +77,11 @@ final class AuthManager: ObservableObject {
                         }
                     }
             }
-            _ = credentialsManager.store(credentials: credentials)
+            guard credentialsManager.store(credentials: credentials) else {
+                lastError = "Could not store credentials in the keychain."
+                isLoggedIn = false
+                return
+            }
             isLoggedIn = true
         } catch {
             lastError = error.localizedDescription

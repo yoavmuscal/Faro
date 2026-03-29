@@ -29,7 +29,8 @@ struct FaroApp: App {
                         }
                         return
                     }
-                    WebAuth.resume(with: url)
+                    // Completes Auth0 ASWebAuthenticationSession when the scheme is $(PRODUCT_BUNDLE_IDENTIFIER).auth0
+                    _ = WebAuthentication.resume(with: url)
                 }
         }
         #if os(macOS)

@@ -7,7 +7,7 @@ struct FaroSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: FaroSpacing.lg) {
-                if authManager.isAuthConfigured {
+                if APIConfig.shouldShowAuth0InUI {
                     auth0Card
                         .padding(.horizontal, FaroSpacing.md)
                 }
@@ -44,7 +44,16 @@ struct FaroSettingsView: View {
         VStack(alignment: .leading, spacing: FaroSpacing.sm) {
             SectionHeader(title: "Auth0", icon: "person.badge.key.fill", tint: FaroPalette.purpleDeep)
 
-            if authManager.isLoggedIn {
+            if APIConfig.auth0MissingClientIdOnly {
+                Text("AUTH0_CLIENT_ID in Info.plist is empty. Add your Auth0 Native app Client ID or sign-in cannot start.")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Auth0 → Applications → your app: copy Client ID. Allowed Callback and Logout URLs must include the redirect for this bundle, e.g. com.faro.Faro.auth0://\(APIConfig.auth0Domain ?? "YOUR_DOMAIN")/ios/com.faro.Faro/callback")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if authManager.isLoggedIn {
                 Label("Signed in", systemImage: "checkmark.seal.fill")
                     .foregroundStyle(FaroPalette.success)
                 Button("Sign out of Auth0") {
@@ -60,7 +69,7 @@ struct FaroSettingsView: View {
                 }
                 .tint(FaroPalette.purpleDeep)
 
-                Text("Required when the API enforces Auth0 (see backend AUTH0_DOMAIN and AUTH0_AUDIENCE).")
+                Text("Required when the API enforces Auth0 (same AUTH0_DOMAIN and AUTH0_AUDIENCE as backend .env).")
                     .font(FaroType.caption())
                     .foregroundStyle(FaroPalette.ink.opacity(0.5))
             }

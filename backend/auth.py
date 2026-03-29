@@ -6,6 +6,7 @@ import logging
 import os
 from functools import lru_cache
 from typing import Any
+from urllib.parse import urlparse
 
 import jwt
 from fastapi import Depends, HTTPException
@@ -17,8 +18,33 @@ logger = logging.getLogger(__name__)
 
 security = HTTPBearer(auto_error=False)
 
-AUTH0_DOMAIN = os.environ.get("AUTH0_DOMAIN", "").strip()
+
+def _normalize_auth0_domain(raw: str) -> str:
+    """Accept host only or full URL; strip https://, paths (e.g. /api/v2/), trailing slashes."""
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    if "://" in raw:
+        host = (urlparse(raw).hostname or "").strip()
+        return host.lower()
+    return raw.split("/")[0].strip().lower()
+
+
+AUTH0_DOMAIN = _normalize_auth0_domain(os.environ.get("AUTH0_DOMAIN", ""))
 AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "").strip()
+
+
+def _audience_variants() -> list[str]:
+    """Auth0 API identifiers may or may not use a trailing slash; tokens must match exactly."""
+    aud = AUTH0_AUDIENCE.strip()
+    if not aud:
+        return []
+    variants = {aud}
+    if aud.endswith("/"):
+        variants.add(aud.rstrip("/"))
+    else:
+        variants.add(aud + "/")
+    return list(variants)
 
 
 def auth_enabled() -> bool:
@@ -34,13 +60,18 @@ def _jwks_client() -> PyJWKClient:
 def verify_auth0_access_token(token: str) -> dict[str, Any]:
     if not auth_enabled():
         return {}
+    audiences = _audience_variants()
+    if not audiences:
+        return {}
     try:
         signing_key = _jwks_client().get_signing_key_from_jwt(token)
+        # PyJWT: pass iterable so either `https://id` or `https://id/` matches the `aud` claim.
+        aud_param: str | list[str] = audiences[0] if len(audiences) == 1 else audiences
         payload = jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
-            audience=AUTH0_AUDIENCE,
+            audience=aud_param,
             issuer=f"https://{AUTH0_DOMAIN}/",
             leeway=30,
         )

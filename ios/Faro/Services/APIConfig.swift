@@ -28,7 +28,11 @@ enum APIConfig {
     }
 
     static var auth0Domain: String? {
-        string(forInfoKey: "AUTH0_DOMAIN")
+        guard let raw = string(forInfoKey: "AUTH0_DOMAIN") else { return nil }
+        if let host = URL(string: raw.lowercased().hasPrefix("http") ? raw : "https://\(raw)")?.host {
+            return host
+        }
+        return raw.split(separator: "/").first.map(String.init)
     }
 
     static var auth0Audience: String? {
@@ -37,6 +41,16 @@ enum APIConfig {
 
     static var isAuth0Configured: Bool {
         auth0ClientId != nil && auth0Domain != nil && auth0Audience != nil
+    }
+
+    /// Domain + API audience are in the plist but `AUTH0_CLIENT_ID` is empty — WebAuth cannot start until you add the Native app's Client ID.
+    static var auth0MissingClientIdOnly: Bool {
+        auth0ClientId == nil && auth0Domain != nil && auth0Audience != nil
+    }
+
+    /// Show Auth0 UI: fully configured, or needs the client id only.
+    static var shouldShowAuth0InUI: Bool {
+        isAuth0Configured || auth0MissingClientIdOnly
     }
 
     private static func string(forInfoKey key: String) -> String? {

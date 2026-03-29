@@ -205,6 +205,7 @@ private extension FaroRootView {
 
 struct WelcomeView: View {
     @EnvironmentObject private var appState: FaroAppState
+    @EnvironmentObject private var authManager: AuthManager
     @State private var firstName = ""
     @State private var lastName = ""
     @State private var email = ""
@@ -325,13 +326,55 @@ struct WelcomeView: View {
                 .disabled(!canContinue)
                 .animation(.easeInOut(duration: 0.25), value: canContinue)
                 .frame(maxWidth: 380)
-                .padding(.bottom, FaroSpacing.xl)
+                .padding(.bottom, FaroSpacing.lg)
                 .offset(y: appeared ? 0 : 40)
                 .opacity(appeared ? 1 : 0)
+
+                if APIConfig.shouldShowAuth0InUI {
+                    VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                        if APIConfig.auth0MissingClientIdOnly {
+                            Text("Auth0 Client ID is missing. Set AUTH0_CLIENT_ID in Info.plist (see More → Auth0).")
+                                .font(FaroType.caption())
+                                .foregroundStyle(FaroPalette.danger)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else if authManager.isLoggedIn {
+                            Label("API sign-in ready", systemImage: "checkmark.seal.fill")
+                                .font(FaroType.subheadline(.medium))
+                                .foregroundStyle(FaroPalette.success)
+                        } else {
+                            Text("This environment uses Auth0 for the Faro API. Sign in so analysis requests succeed.")
+                                .font(FaroType.caption())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button {
+                                Task { await authManager.login() }
+                            } label: {
+                                Label("Sign in with Auth0", systemImage: "person.badge.key.fill")
+                                    .font(FaroType.headline())
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 52)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(FaroPalette.purpleDeep)
+                            if let err = authManager.lastError, !err.isEmpty {
+                                Text(err)
+                                    .font(FaroType.caption())
+                                    .foregroundStyle(FaroPalette.danger)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: 380)
+                    .padding(.bottom, FaroSpacing.xl)
+                    .offset(y: appeared ? 0 : 40)
+                    .opacity(appeared ? 1 : 0)
+                }
             }
             .padding(.horizontal, FaroSpacing.lg)
         }
         .faroCanvasBackground()
+        .task {
+            await authManager.refreshLoginState()
+        }
         .onAppear {
             withAnimation(.spring(response: 0.8, dampingFraction: 0.75)) {
                 appeared = true
