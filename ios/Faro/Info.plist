@@ -26,8 +26,6 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
-	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -51,15 +49,17 @@
 			</array>
 		</dict>
 	</array>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Faro needs microphone access to talk with the conversational intake agent.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Faro uses speech recognition so you can dictate follow-up questions about your coverage analysis.</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Faro needs microphone access to talk with the conversational intake agent.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Faro uses speech recognition so you can dictate follow-up questions about your coverage analysis.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

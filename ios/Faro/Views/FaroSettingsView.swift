@@ -785,16 +785,35 @@ struct FaroSettingsView: View {
         guard let data = try? await item.loadTransferable(type: Data.self) else { return }
         #if os(iOS)
         guard let uiImage = UIImage(data: data) else { return }
-        let targetSize = CGSize(width: 300, height: 300)
-        let renderer = UIGraphicsImageRenderer(size: targetSize)
-        let resized = renderer.image { _ in
-            uiImage.draw(in: CGRect(origin: .zero, size: targetSize))
-        }
-        if let compressed = resized.jpegData(compressionQuality: 0.82) {
+        if let compressed = avatarPhotoData(from: uiImage, targetSize: CGSize(width: 300, height: 300)) {
             appState.userProfilePhotoData = compressed
         }
         #endif
     }
+
+    #if os(iOS)
+    private func avatarPhotoData(from image: UIImage, targetSize: CGSize) -> Data? {
+        guard image.size.width > 0, image.size.height > 0 else { return nil }
+
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = true
+        format.scale = 1
+
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        let cropped = renderer.image { _ in
+            let scale = max(targetSize.width / image.size.width, targetSize.height / image.size.height)
+            let drawSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            let drawOrigin = CGPoint(
+                x: (targetSize.width - drawSize.width) / 2,
+                y: (targetSize.height - drawSize.height) / 2
+            )
+
+            image.draw(in: CGRect(origin: drawOrigin, size: drawSize))
+        }
+
+        return cropped.jpegData(compressionQuality: 0.82)
+    }
+    #endif
 }
 
 #Preview {

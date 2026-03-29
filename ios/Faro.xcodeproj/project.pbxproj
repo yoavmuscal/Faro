@@ -10,6 +10,8 @@
 		0AB42CDDB962681D9ED36959 /* ElevenLabsConvService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5856D523D28CCEAA01A4A5 /* ElevenLabsConvService.swift */; };
 		118A2A870EA2E089E7C31A73 /* VoiceIntakeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F338361E0FEDBF598F429A5 /* VoiceIntakeView.swift */; };
 		9E704778F101D3B30AD1FBF8 /* IntakeChoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67E0A0E48F9A0581272CB66D /* IntakeChoiceView.swift */; };
+		A90000000000000000000003 /* Auth0 in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* Auth0 */; };
+		A90000000000000000000004 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90000000000000000000006 /* AuthManager.swift */; };
 		B000000000000000000000001 /* FaroApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000001 /* FaroApp.swift */; };
 		B000000000000000000000002 /* APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000002 /* APIModels.swift */; };
 		B000000000000000000000003 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000003 /* APIService.swift */; };
@@ -32,15 +34,13 @@
 		B000000000000000000000014 /* SummaryPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000016 /* SummaryPlayerView.swift */; };
 		B000000000000000000000015 /* PDFExportContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000017 /* PDFExportContent.swift */; };
 		B000000000000000000000017 /* ActivityShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000018 /* ActivityShareSheet.swift */; };
-		F10000000000000000000001 /* FaroWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000012 /* FaroWidget.swift */; };
-		F10000000000000000000002 /* FaroWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000013 /* FaroWidgetBundle.swift */; };
-		F10000000000000000000004 /* FaroWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000017 /* FaroWidgetIntent.swift */; };
-		F10000000000000000000003 /* FaroWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F10000000000000000000016 /* FaroWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		A90000000000000000000003 /* Auth0 in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* Auth0 */; };
-		A90000000000000000000004 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90000000000000000000006 /* AuthManager.swift */; };
 		B000000000000000000000019 /* FaroAuth0SessionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000019 /* FaroAuth0SessionCard.swift */; };
 		B00000000000000000000001C /* CoverageChatSpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001B /* CoverageChatSpeechTranscriber.swift */; };
 		B00000000000000000000001E /* FaroDemoData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001C /* FaroDemoData.swift */; };
+		F10000000000000000000001 /* FaroWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000012 /* FaroWidget.swift */; };
+		F10000000000000000000002 /* FaroWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000013 /* FaroWidgetBundle.swift */; };
+		F10000000000000000000003 /* FaroWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F10000000000000000000016 /* FaroWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F10000000000000000000004 /* FaroWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000017 /* FaroWidgetIntent.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -95,18 +95,18 @@
 		A000000000000000000000016 /* SummaryPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryPlayerView.swift; sourceTree = "<group>"; };
 		A000000000000000000000017 /* PDFExportContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExportContent.swift; sourceTree = "<group>"; };
 		A000000000000000000000018 /* ActivityShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityShareSheet.swift; sourceTree = "<group>"; };
+		A000000000000000000000019 /* FaroAuth0SessionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroAuth0SessionCard.swift; sourceTree = "<group>"; };
+		A00000000000000000000001B /* CoverageChatSpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageChatSpeechTranscriber.swift; sourceTree = "<group>"; };
+		A00000000000000000000001C /* FaroDemoData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroDemoData.swift; sourceTree = "<group>"; };
+		A90000000000000000000006 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		D000000000000000000000001 /* Faro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Faro.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F10000000000000000000011 /* FaroIOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FaroIOS.entitlements; sourceTree = "<group>"; };
 		F10000000000000000000012 /* FaroWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroWidget.swift; sourceTree = "<group>"; };
 		F10000000000000000000013 /* FaroWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroWidgetBundle.swift; sourceTree = "<group>"; };
-		F10000000000000000000017 /* FaroWidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroWidgetIntent.swift; sourceTree = "<group>"; };
 		F10000000000000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F10000000000000000000015 /* FaroWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FaroWidget.entitlements; sourceTree = "<group>"; };
 		F10000000000000000000016 /* FaroWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FaroWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		A90000000000000000000006 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
-		A000000000000000000000019 /* FaroAuth0SessionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroAuth0SessionCard.swift; sourceTree = "<group>"; };
-		A00000000000000000000001B /* CoverageChatSpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageChatSpeechTranscriber.swift; sourceTree = "<group>"; };
-		A00000000000000000000001C /* FaroDemoData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroDemoData.swift; sourceTree = "<group>"; };
+		F10000000000000000000017 /* FaroWidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroWidgetIntent.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -401,25 +401,6 @@
 		};
 /* End PBXTargetDependency section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		A90000000000000000000001 /* XCRemoteSwiftPackageReference "Auth0" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/auth0/Auth0.swift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.10.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		A90000000000000000000002 /* Auth0 */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A90000000000000000000001 /* XCRemoteSwiftPackageReference "Auth0" */;
-			productName = Auth0;
-		};
-/* End XCSwiftPackageProductDependency section */
-
 /* Begin XCBuildConfiguration section */
 		E000000000000000000000006 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -555,6 +536,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = 55QTLX7JV3;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -570,7 +552,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.faro.Faro;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mertkanibir.faro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -592,6 +574,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = 55QTLX7JV3;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -607,7 +590,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.faro.Faro;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mertkanibir.faro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -636,7 +619,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.faro.Faro.widget.mertkanibir;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mertkanibir.faro.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -664,7 +647,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.faro.Faro.widget.mertkanibir;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mertkanibir.faro.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -705,6 +688,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A90000000000000000000001 /* XCRemoteSwiftPackageReference "Auth0" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/auth0/Auth0.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.10.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A90000000000000000000002 /* Auth0 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A90000000000000000000001 /* XCRemoteSwiftPackageReference "Auth0" */;
+			productName = Auth0;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E000000000000000000000001 /* Project object */;
 }

@@ -12,7 +12,7 @@ final class WebSocketService: NSObject, ObservableObject {
     private let baseURL: String
 
     private var isOfflineDemoSession: Bool {
-        APIConfig.isDemoModeEnabled && FaroDemoData.isDemoSessionId(sessionId)
+        FaroDemoData.isDemoSessionId(sessionId)
     }
 
     init(sessionId: String, baseURL: String? = nil) {
@@ -27,7 +27,7 @@ final class WebSocketService: NSObject, ObservableObject {
         if isOfflineDemoSession {
             stepUpdates = []
             isConnected = true
-            let intake = FaroDemoData.loadPendingIntake() ?? FaroDemoData.sampleGuidedIntake()
+            let intake = FaroDemoData.loadPendingIntake(for: sessionId) ?? FaroDemoData.sampleGuidedIntake()
             let steps = FaroDemoData.demoPipelineSteps(for: intake)
             demoSimulationTask = Task { @MainActor in
                 for (step, summary) in steps {

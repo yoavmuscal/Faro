@@ -10,7 +10,7 @@ actor APIService {
     static let shared = APIService()
 
     /// Override via Info.plist key `API_BASE_URL` for local dev vs prod.
-    private let baseURL: String = APIConfig.httpBaseURL
+    private var baseURL: String { APIConfig.httpBaseURL }
 
     private var accessTokenProvider: (@Sendable () async -> String?)?
 
@@ -36,6 +36,12 @@ actor APIService {
     // MARK: - POST /intake
 
     func submitIntake(_ intake: IntakeRequest) async throws -> IntakeResponse {
+        if APIConfig.isDemoModeEnabled {
+            let sessionId = FaroDemoData.makeSessionId()
+            try FaroDemoData.storePendingIntake(intake, for: sessionId)
+            return IntakeResponse(sessionId: sessionId)
+        }
+
         var request = URLRequest(url: URL(string: "\(baseURL)/intake")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -50,6 +56,10 @@ actor APIService {
     // MARK: - Conversational AI
 
     func startConversation() async throws -> ConvStartResponse {
+        if APIConfig.isDemoModeEnabled {
+            return ConvStartResponse(sessionId: FaroDemoData.makeSessionId(), signedUrl: "")
+        }
+
         var request = URLRequest(url: URL(string: "\(baseURL)/conv/start")!)
         request.httpMethod = "POST"
         await applyAuth(&request)
@@ -60,6 +70,13 @@ actor APIService {
     }
 
     func completeConversation(sessionId: String, transcript: [ConvTranscriptTurn]) async throws -> ConvCompleteResponse {
+        if APIConfig.isDemoModeEnabled || FaroDemoData.isDemoSessionId(sessionId) {
+            let analysisSessionId = FaroDemoData.makeSessionId()
+            let intake = FaroDemoData.intakeForVoiceDemo(transcript: transcript)
+            try FaroDemoData.storePendingIntake(intake, for: analysisSessionId)
+            return ConvCompleteResponse(sessionId: analysisSessionId)
+        }
+
         var request = URLRequest(url: URL(string: "\(baseURL)/conv/complete")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -77,6 +94,11 @@ actor APIService {
 
     /// Polls while the server returns **202** (pipeline finished in the UI but DB not finalized yet).
     func fetchResults(sessionId: String) async throws -> ResultsResponse {
+        if FaroDemoData.isDemoSessionId(sessionId) {
+            let intake = FaroDemoData.loadPendingIntake(for: sessionId) ?? FaroDemoData.sampleGuidedIntake()
+            return FaroDemoData.results(from: intake)
+        }
+
         let url = URL(string: "\(baseURL)/results/\(sessionId)")!
         let maxAttempts = 60
         let delayNs: UInt64 = 1_000_000_000 // 1s
@@ -124,6 +146,10 @@ actor APIService {
     // MARK: - GET /status/{session_id}
 
     func fetchStatus(sessionId: String) async throws -> StatusResponse {
+        if FaroDemoData.isDemoSessionId(sessionId) {
+            return FaroDemoData.demoStatus()
+        }
+
         var request = URLRequest(url: URL(string: "\(baseURL)/status/\(sessionId)")!)
         await applyAuth(&request)
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -134,6 +160,10 @@ actor APIService {
     // MARK: - POST /results/{session_id}/chat
 
     func sendCoverageChat(sessionId: String, message: String) async throws -> String {
+        if FaroDemoData.isDemoSessionId(sessionId) {
+            return FaroDemoData.demoCoverageChatReply(userMessage: message)
+        }
+
         var request = URLRequest(url: URL(string: "\(baseURL)/results/\(sessionId)/chat")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

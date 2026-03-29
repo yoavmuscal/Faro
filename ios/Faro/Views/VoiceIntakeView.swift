@@ -9,6 +9,7 @@ final class VoiceIntakeViewModel: ObservableObject {
 
     @Published var isSubmitting = false
     @Published var analysisSessionId: String? // Final Session ID from /conv/complete
+    @Published var analysisBusinessName = "Your Business"
     @Published var errorMessage: String?
 
     let liveService = ElevenLabsLiveConversationService()
@@ -45,8 +46,9 @@ final class VoiceIntakeViewModel: ObservableObject {
         do {
             let r = try await APIService.shared.startConversation()
             convSessionId = r.sessionId
-            if APIConfig.isDemoModeEnabled {
+            if FaroDemoData.isDemoSessionId(r.sessionId) || r.signedUrl.isEmpty {
                 let intake = FaroDemoData.sampleGuidedIntake()
+                analysisBusinessName = intake.businessName
                 liveService.loadDemoSession(transcript: ElevenLabsConvService.transcript(from: intake))
             } else {
                 try await liveService.connect(signedUrl: r.signedUrl)
@@ -71,6 +73,9 @@ final class VoiceIntakeViewModel: ObservableObject {
         isSubmitting = true
         errorMessage = nil
         do {
+            if FaroDemoData.isDemoSessionId(sid) {
+                analysisBusinessName = FaroDemoData.intakeForVoiceDemo(transcript: liveService.transcript).businessName
+            }
             let response = try await APIService.shared.completeConversation(sessionId: sid, transcript: liveService.transcript)
             analysisSessionId = response.sessionId
         } catch {
@@ -131,14 +136,14 @@ struct VoiceIntakeView: View {
             vm.abortConversation()
         }
         .navigationDestination(item: $vm.analysisSessionId) { sessionId in
-            AgentTrackerView(sessionId: sessionId, businessName: "Your Business") {
+            AgentTrackerView(sessionId: sessionId, businessName: vm.analysisBusinessName) {
                 vm.analysisSessionId = nil
                 dismiss()
             }
         }
         .onChange(of: vm.analysisSessionId) { _, newId in
             if let id = newId {
-                appState.beginNewAnalysis(sessionId: id, businessName: "Your Business")
+                appState.beginNewAnalysis(sessionId: id, businessName: vm.analysisBusinessName)
             }
         }
         .onChange(of: vm.conversationEndedByServer) { _, ended in

@@ -3,6 +3,7 @@ import Foundation
 /// Local sample analysis when **Offline demo** is on — no backend, Gemini, or API keys.
 enum FaroDemoData {
     private static let pendingIntakeKey = "faro_demo_pendingIntakePayload"
+    private static let latestPendingSessionKey = "faro_demo_latestPendingSessionId"
 
     /// Session IDs created for demo runs (intake + analysis). WebSocket and results use this prefix.
     static let sessionPrefix = "faro-demo-"
@@ -15,14 +16,33 @@ enum FaroDemoData {
         sessionPrefix + UUID().uuidString
     }
 
-    static func storePendingIntake(_ intake: IntakeRequest) throws {
+    private static func pendingIntakeKey(for sessionId: String) -> String {
+        pendingIntakeKey + "_" + sessionId
+    }
+
+    static func storePendingIntake(_ intake: IntakeRequest, for sessionId: String) throws {
         let data = try JSONEncoder().encode(intake)
+        UserDefaults.standard.set(data, forKey: pendingIntakeKey(for: sessionId))
+        // Keep the legacy singleton key in sync so older code paths still have a sensible fallback.
         UserDefaults.standard.set(data, forKey: pendingIntakeKey)
+        UserDefaults.standard.set(sessionId, forKey: latestPendingSessionKey)
+    }
+
+    static func loadPendingIntake(for sessionId: String) -> IntakeRequest? {
+        if let data = UserDefaults.standard.data(forKey: pendingIntakeKey(for: sessionId)) {
+            return try? JSONDecoder().decode(IntakeRequest.self, from: data)
+        }
+        // Fallback for older builds that only stored one demo intake payload.
+        return loadPendingIntake()
     }
 
     static func loadPendingIntake() -> IntakeRequest? {
         guard let data = UserDefaults.standard.data(forKey: pendingIntakeKey) else { return nil }
         return try? JSONDecoder().decode(IntakeRequest.self, from: data)
+    }
+
+    static func latestPendingSessionId() -> String? {
+        UserDefaults.standard.string(forKey: latestPendingSessionKey)
     }
 
     /// Same structured content as ``OnboardingViewModel/loadDemoData()`` for voice / fallback.
