@@ -11,15 +11,27 @@ private struct PDFShareDocument: Identifiable {
 // MARK: - View Model
 
 @MainActor
-final class CoverageDashboardViewModel: ObservableObject {
+final class CoverageDashboardViewModel: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var isPlayingAudio = false
     @Published var isGeneratingPDF = false
 
     private var audioPlayer: AVPlayer?
+    private let speechSynthesizer = AVSpeechSynthesizer()
+    private var itemErrorObservation: NSKeyValueObservation?
     let results: ResultsResponse
+
+    override init() {
+        fatalError("Use init(results:)")
+    }
 
     init(results: ResultsResponse) {
         self.results = results
+        super.init()
+        speechSynthesizer.delegate = self
+    }
+
+    var canPlaySummary: Bool {
+        !results.voiceSummaryUrl.isEmpty || !(results.plainEnglishSummary ?? "").isEmpty
     }
 
     func preparePlaybackSession() {
@@ -27,14 +39,19 @@ final class CoverageDashboardViewModel: ObservableObject {
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.duckOthers])
             try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            // Playback may still work with default session; ignore configuration errors.
-        }
+        } catch {}
         #endif
     }
 
     func playVoiceSummary() {
-        guard !results.voiceSummaryUrl.isEmpty else { return }
+        if !results.voiceSummaryUrl.isEmpty {
+            playRemoteAudio()
+        } else if let text = results.plainEnglishSummary, !text.isEmpty {
+            speakText(text)
+        }
+    }
+
+    private func playRemoteAudio() {
         preparePlaybackSession()
         isPlayingAudio = true
 
@@ -45,9 +62,19 @@ final class CoverageDashboardViewModel: ObservableObject {
             urlString = results.voiceSummaryUrl
         }
 
-        guard let url = URL(string: urlString) else { return }
+        guard let url = URL(string: urlString) else {
+            fallbackToSpeech()
+            return
+        }
         let item = AVPlayerItem(url: url)
         audioPlayer = AVPlayer(playerItem: item)
+
+        itemErrorObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            if item.status == .failed {
+                Task { @MainActor in self?.fallbackToSpeech() }
+            }
+        }
+
         NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
@@ -58,9 +85,38 @@ final class CoverageDashboardViewModel: ObservableObject {
         audioPlayer?.play()
     }
 
+    private func fallbackToSpeech() {
+        audioPlayer?.pause()
+        audioPlayer = nil
+        itemErrorObservation = nil
+        if let text = results.plainEnglishSummary, !text.isEmpty {
+            speakText(text)
+        } else {
+            isPlayingAudio = false
+        }
+    }
+
+    private func speakText(_ text: String) {
+        preparePlaybackSession()
+        isPlayingAudio = true
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        speechSynthesizer.speak(utterance)
+    }
+
     func stopAudio() {
         audioPlayer?.pause()
+        audioPlayer = nil
+        itemErrorObservation = nil
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
+        }
         isPlayingAudio = false
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in isPlayingAudio = false }
     }
 }
 
@@ -273,7 +329,7 @@ struct CoverageDashboardView: View {
                 .frame(height: 56)
             }
             .buttonStyle(.faroGradient)
-            .disabled(results.voiceSummaryUrl.isEmpty)
+            .disabled(!vm.canPlaySummary)
 
             Button {
                 Task { await exportPDF() }

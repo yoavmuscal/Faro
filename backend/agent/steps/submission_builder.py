@@ -94,7 +94,7 @@ Return JSON with this structure:
 }}
 
 Important:
-- `loss_history` must be an array, not an object
+- `loss_history` MUST be an empty array `[]` because no actual loss data was provided by the applicant. Do NOT invent or fabricate any loss events.
 - `underwriter_notes` must be an array of strings
 - `employees`, `revenue`, `payroll`, and `subcontractors` must be nested objects exactly as shown"""
 
