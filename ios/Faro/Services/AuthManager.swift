@@ -61,10 +61,15 @@ final class AuthManager: ObservableObject {
             lastError = "Auth0 is not configured in Info.plist."
             return
         }
+        guard let callbackURL = Self.auth0CallbackRedirectURL() else {
+            lastError = "Could not build Auth0 callback URL (missing bundle identifier?)."
+            return
+        }
         lastError = nil
         do {
             let credentials = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Credentials, Error>) in
                 Auth0.webAuth(clientId: clientId, domain: domain)
+                    .redirectURL(callbackURL)
                     .audience(audience)
                     .scope("openid profile email offline_access")
                     // Omit useEphemeralSession: ephemeral sessions often break return-to-app / SSO during debugging.
@@ -91,9 +96,10 @@ final class AuthManager: ObservableObject {
 
     func logout() async {
         lastError = nil
-        if let clientId, let domain {
+        if let clientId, let domain, let callbackURL = Self.auth0CallbackRedirectURL() {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 Auth0.webAuth(clientId: clientId, domain: domain)
+                    .redirectURL(callbackURL)
                     .clearSession { _ in
                         continuation.resume()
                     }
@@ -101,5 +107,12 @@ final class AuthManager: ObservableObject {
         }
         _ = credentialsManager?.clear()
         isLoggedIn = false
+    }
+
+    /// Must match **Allowed Callback URLs** and **Allowed Logout URLs** in the Auth0 application and `CFBundleURLSchemes` (`{bundle}.auth0`).
+    private static func auth0CallbackRedirectURL() -> URL? {
+        guard let bundleId = Bundle.main.bundleIdentifier,
+              let host = APIConfig.auth0Domain else { return nil }
+        return URL(string: "\(bundleId).auth0://\(host)/ios/\(bundleId)/callback")
     }
 }
