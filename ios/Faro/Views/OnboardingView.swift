@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 #endif
 
-// MARK: - Keyboard (iOS number pads; macOS uses default field behavior)
+// MARK: - Keyboard (number pads)
 
 enum FaroTextKeyboard {
     case `default`
