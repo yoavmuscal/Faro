@@ -607,12 +607,23 @@ def _fallback_workers_comp_requirement(
     intake: IntakeRequest,
     risk_profile: RiskProfile | None,
 ) -> CoverageRequirement:
+    from agent.pricing_rules import estimate_confidence, estimate_premium
+
     category = (
         CoverageCategory.required
         if _workers_comp_required(intake, risk_profile)
         else CoverageCategory.recommended
     )
-    employee_count = max(intake.employee_count, 1)
+    rule_result = estimate_premium("Workers Compensation", intake, risk_profile)
+    if rule_result:
+        low, high = rule_result
+        conf = estimate_confidence("Workers Compensation", intake, risk_profile)
+    else:
+        employee_count = max(intake.employee_count, 1)
+        low = max(750.0, employee_count * 250.0)
+        high = max(1800.0, employee_count * 700.0)
+        conf = 0.72 if category == CoverageCategory.required else 0.6
+
     return CoverageRequirement(
         type="Workers Compensation",
         category=category,
@@ -621,9 +632,9 @@ def _fallback_workers_comp_requirement(
             if category == CoverageCategory.required
             else "Recommended because the business has employees and payroll-related injury exposure."
         ),
-        estimated_premium_low=max(750.0, employee_count * 250.0),
-        estimated_premium_high=max(1800.0, employee_count * 700.0),
-        confidence=0.72 if category == CoverageCategory.required else 0.6,
+        estimated_premium_low=low,
+        estimated_premium_high=high,
+        confidence=conf,
     )
 
 
@@ -675,12 +686,47 @@ def normalize_coverage_requirements_payload(
             risk_profile,
         )
 
+    sanitized = [
+        _ensure_nonzero_premium(req, intake, risk_profile) for req in deduped.values()
+    ]
+
     return sorted(
-        deduped.values(),
+        sanitized,
         key=lambda item: (
             -_CATEGORY_PRECEDENCE[item.category],
             item.type.casefold(),
         ),
+    )
+
+
+def _ensure_nonzero_premium(
+    req: CoverageRequirement,
+    intake: IntakeRequest,
+    risk_profile: RiskProfile | None,
+) -> CoverageRequirement:
+    """Last-resort guard: if a requirement still has zero/negative premiums,
+    try the rules engine or apply a revenue-based floor."""
+    if req.estimated_premium_low > 0 and req.estimated_premium_high > 0:
+        return req
+
+    from agent.pricing_rules import estimate_premium
+
+    rule_result = estimate_premium(req.type, intake, risk_profile)
+    if rule_result:
+        low, high = rule_result
+    else:
+        revenue = max(intake.annual_revenue, 50_000)
+        low = max(500.0, revenue * 0.001)
+        high = max(1_500.0, revenue * 0.004)
+
+    return CoverageRequirement(
+        type=req.type,
+        category=req.category,
+        rationale=req.rationale,
+        estimated_premium_low=low,
+        estimated_premium_high=high,
+        confidence=req.confidence,
+        trigger_event=req.trigger_event,
     )
 
 

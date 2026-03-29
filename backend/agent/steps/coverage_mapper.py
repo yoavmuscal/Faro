@@ -1,18 +1,29 @@
 """
-Step 2 — Coverage Mapper
+Step 2 — Coverage Mapper  (hybrid: LLM selection + rules-engine pricing)
 Input:  risk profile from Step 1
-Output: coverage requirements list with priority flags
+Output: coverage requirements list with priority flags and deterministic premiums
 Model:  Gemini 3 Flash with Gemini 2.5 Flash fallback
+
+The LLM decides WHICH coverages apply, their priority category, rationale, and
+trigger events. A deterministic rules engine then overwrites the premium
+estimates so numbers are stable and explainable.  When the rules engine has no
+formula for a niche coverage type, the LLM estimate is kept as a fallback.
 """
 import json
+import logging
 
 from models import (
+    CoverageRequirement,
     IntakeRequest,
+    RiskProfile,
     normalize_coverage_requirements_payload,
     normalize_risk_profile_payload,
 )
 
 from ..llm import generate_validated_json_with_fallback
+from ..pricing_rules import estimate_confidence, estimate_premium
+
+log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are a commercial insurance coverage specialist.
 Given a business risk profile, you determine exactly which insurance policies are needed.
@@ -60,7 +71,66 @@ Return a JSON array:
   }}
 ]
 
-Base premium estimates on typical market rates for this business size and state. Use conservative estimates."""
+For premium estimates, provide your best guess based on typical market rates.
+These will be cross-checked against an actuarial rules engine for accuracy."""
+
+
+def _apply_rules_engine(
+    requirements: list[CoverageRequirement],
+    intake: IntakeRequest,
+    risk_profile: RiskProfile | None,
+) -> list[CoverageRequirement]:
+    """Overlay deterministic premiums onto LLM-selected coverages.
+
+    Strategy:
+    - If the rules engine has a formula, use its numbers.
+    - If the LLM estimate is within 40% of the rules-engine midpoint,
+      blend them (70% rules, 30% LLM) to preserve LLM nuance.
+    - If the LLM is wildly off, prefer the rules engine entirely.
+    - If there is no rule, keep the LLM estimate as-is.
+    """
+    enriched: list[CoverageRequirement] = []
+
+    for req in requirements:
+        rule_result = estimate_premium(req.type, intake, risk_profile)
+        if rule_result is None:
+            enriched.append(req)
+            continue
+
+        rule_low, rule_high = rule_result
+        rule_mid = (rule_low + rule_high) / 2
+        llm_mid = (req.estimated_premium_low + req.estimated_premium_high) / 2
+
+        if rule_mid > 0 and abs(llm_mid - rule_mid) / rule_mid <= 0.40:
+            blended_low = rule_low * 0.70 + req.estimated_premium_low * 0.30
+            blended_high = rule_high * 0.70 + req.estimated_premium_high * 0.30
+        else:
+            blended_low = rule_low
+            blended_high = rule_high
+
+        rules_confidence = estimate_confidence(req.type, intake, risk_profile)
+        blended_confidence = min(0.97, rules_confidence * 0.60 + req.confidence * 0.40)
+
+        enriched.append(
+            CoverageRequirement(
+                type=req.type,
+                category=req.category,
+                rationale=req.rationale,
+                estimated_premium_low=round(blended_low, 2),
+                estimated_premium_high=round(blended_high, 2),
+                confidence=round(blended_confidence, 2),
+                trigger_event=req.trigger_event,
+            )
+        )
+        log.info(
+            "Hybrid premium for %s: rules=(%.0f–%.0f) llm=(%.0f–%.0f) → final=(%.0f–%.0f)",
+            req.type,
+            rule_low, rule_high,
+            req.estimated_premium_low, req.estimated_premium_high,
+            blended_low, blended_high,
+        )
+
+    return enriched
 
 
 async def run(state: dict) -> dict:
@@ -83,8 +153,12 @@ async def run(state: dict) -> dict:
         ),
     )
 
+    coverage_requirements = _apply_rules_engine(
+        coverage_requirements, intake, risk_profile,
+    )
+
     analysis_meta = dict(state.get("analysis_meta") or {})
-    analysis_meta["coverage_mapper"] = llm_meta
+    analysis_meta["coverage_mapper"] = {**llm_meta, "pricing_mode": "hybrid"}
 
     return {
         **state,
