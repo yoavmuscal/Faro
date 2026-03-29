@@ -40,6 +40,8 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     @Published var isAgentSpeaking: Bool = false
 
     private nonisolated(unsafe) var webSocketTask: URLSessionWebSocketTask?
+    private nonisolated(unsafe) var urlSession: URLSession?        // strong ref — prevents ARC dealloc killing the socket
+    private nonisolated(unsafe) var connectionContinuation: CheckedContinuation<Void, Error>?
     private nonisolated(unsafe) var micConverter: AVAudioConverter?
     private nonisolated(unsafe) var uplinkPCMFormat: AVAudioFormat?
     private nonisolated(unsafe) var playbackPCMFormat: AVAudioFormat?
@@ -84,10 +86,22 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
             throw URLError(.badURL)
         }
 
+        // Keep a strong reference to the session — URLSessionWebSocketTask does not
+        // reliably retain its parent session on all iOS versions, so a local variable
+        // would get ARC-deallocated after connect() returns, killing the socket.
         let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+        urlSession = session
         webSocketTask = session.webSocketTask(with: url)
-        webSocketTask?.resume()
 
+        // Suspend until didOpenWithProtocol fires (real TCP+TLS+HTTP-upgrade success).
+        // This prevents the race where send() buffers optimistically but receive() then
+        // fails because the handshake hasn't completed yet.
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            connectionContinuation = cont
+            webSocketTask?.resume()
+        }
+
+        // Handshake confirmed — now exchange the initiation message and start listening.
         try await sendConversationInitiationClientData()
         listenForMessages()
 
@@ -104,6 +118,8 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     private func cleanupAudioAndSocket() {
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
+        urlSession?.invalidateAndCancel()
+        urlSession = nil
 
         if tapInstalled {
             audioEngine.inputNode.removeTap(onBus: 0)
@@ -398,6 +414,19 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
 
     // MARK: - URLSessionWebSocketDelegate
 
+    /// Fires once the TCP+TLS+HTTP-upgrade handshake completes successfully.
+    /// This is the real "connected" signal — we resume the connection continuation here.
+    nonisolated func urlSession(
+        _ session: URLSession,
+        webSocketTask: URLSessionWebSocketTask,
+        didOpenWithProtocol protocol: String?
+    ) {
+        Task { @MainActor in
+            connectionContinuation?.resume()
+            connectionContinuation = nil
+        }
+    }
+
     /// Captures explicit close codes/reasons sent by ElevenLabs so the error is human-readable.
     nonisolated func urlSession(
         _ session: URLSession,
@@ -408,11 +437,40 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
         let reasonStr = reason.flatMap { String(data: $0, encoding: .utf8) } ?? "none"
         let msg = "Server closed connection (code \(closeCode.rawValue), reason: \(reasonStr))"
         Task { @MainActor in
-            // Only overwrite state if we haven't already moved to an error/disconnected state.
+            // If we're still waiting for the handshake, fail the connection continuation.
+            if connectionContinuation != nil {
+                connectionContinuation?.resume(throwing: URLError(.cannotConnectToHost,
+                    userInfo: [NSLocalizedDescriptionKey: msg]))
+                connectionContinuation = nil
+                return
+            }
             switch self.state {
             case .connected, .connecting:
                 self.cleanupAudioAndSocket()
                 self.state = .error(msg)
+            default:
+                break
+            }
+        }
+    }
+
+    /// Catches transport-level failures (DNS, TLS, network unreachable, etc.).
+    nonisolated func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        guard let error else { return }
+        Task { @MainActor in
+            if connectionContinuation != nil {
+                connectionContinuation?.resume(throwing: error)
+                connectionContinuation = nil
+                return
+            }
+            switch self.state {
+            case .connected, .connecting:
+                self.cleanupAudioAndSocket()
+                self.state = .error("Transport error: \(error.localizedDescription)")
             default:
                 break
             }
