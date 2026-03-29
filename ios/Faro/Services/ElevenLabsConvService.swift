@@ -99,7 +99,9 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
         }
     }
 
-    func disconnect() {
+    /// Tears down the audio engine and WebSocket without touching `state`.
+    /// Call this from any terminal state handler, then set `state` explicitly.
+    private func cleanupAudioAndSocket() {
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
 
@@ -107,7 +109,7 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
             audioEngine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
         }
-        audioEngine.stop()
+        if audioEngine.isRunning { audioEngine.stop() }
         playerNode.stop()
 
         #if os(iOS)
@@ -116,6 +118,10 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
 
         micConverter = nil
         resetSessionAudioState()
+    }
+
+    func disconnect() {
+        cleanupAudioAndSocket()
         state = .disconnected
     }
 
@@ -156,8 +162,10 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
                 self.listenForMessages()
             case .failure(let error):
                 Task { @MainActor in
-                    self.state = .error(error.localizedDescription)
-                    self.disconnect()
+                    // Clean up resources but preserve .error state so the user sees the message.
+                    // (Calling disconnect() here would immediately overwrite .error with .disconnected.)
+                    self.cleanupAudioAndSocket()
+                    self.state = .error("WebSocket error: \(error.localizedDescription)")
                 }
             }
         }
@@ -386,5 +394,28 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
         }
 
         playerNode.scheduleBuffer(buffer, completionHandler: nil)
+    }
+
+    // MARK: - URLSessionWebSocketDelegate
+
+    /// Captures explicit close codes/reasons sent by ElevenLabs so the error is human-readable.
+    nonisolated func urlSession(
+        _ session: URLSession,
+        webSocketTask: URLSessionWebSocketTask,
+        didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
+        reason: Data?
+    ) {
+        let reasonStr = reason.flatMap { String(data: $0, encoding: .utf8) } ?? "none"
+        let msg = "Server closed connection (code \(closeCode.rawValue), reason: \(reasonStr))"
+        Task { @MainActor in
+            // Only overwrite state if we haven't already moved to an error/disconnected state.
+            switch self.state {
+            case .connected, .connecting:
+                self.cleanupAudioAndSocket()
+                self.state = .error(msg)
+            default:
+                break
+            }
+        }
     }
 }
