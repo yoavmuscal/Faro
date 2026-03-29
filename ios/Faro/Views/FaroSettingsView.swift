@@ -142,7 +142,10 @@ struct FaroSettingsView: View {
                         .foregroundStyle(FaroPalette.success)
                     Spacer()
                     Button("Sign out") {
-                        Task { await authManager.logout() }
+                        Task {
+                            await authManager.logout()
+                            appState.signOut()
+                        }
                     }
                     .font(FaroType.subheadline(.medium))
                     .foregroundStyle(FaroPalette.danger)

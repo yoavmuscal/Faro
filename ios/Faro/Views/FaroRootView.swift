@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum FaroSection: String, CaseIterable, Identifiable, Hashable {
     case home
@@ -32,14 +35,21 @@ enum FaroSection: String, CaseIterable, Identifiable, Hashable {
 
 struct FaroRootView: View {
     @EnvironmentObject private var appState: FaroAppState
+    @EnvironmentObject private var authManager: AuthManager
     @State private var section: FaroSection = .home
 
     var body: some View {
         Group {
-            if appState.isSignedIn {
+            if appState.shouldShowMainApp(
+                isAuth0Enabled: APIConfig.shouldShowAuth0InUI,
+                isAuth0LoggedIn: authManager.isLoggedIn
+            ) {
                 mainContent
+            } else if APIConfig.shouldShowAuth0InUI && !authManager.isLoggedIn && appState.hasSubmittedNameBeforeAuth0 {
+                Auth0GateView()
             } else {
                 WelcomeView()
+                    .id(appState.onboardingFlowResetCount)
             }
         }
         .onAppear {
@@ -53,6 +63,23 @@ struct FaroRootView: View {
                 appState.selectedSectionRawValue = newValue.rawValue
             }
         }
+        .onChange(of: authManager.isLoggedIn) { _, _ in
+            tryCompleteAuth0Flow()
+        }
+        .onChange(of: appState.hasSubmittedNameBeforeAuth0) { _, _ in
+            tryCompleteAuth0Flow()
+        }
+        .task {
+            await authManager.refreshLoginState()
+            tryCompleteAuth0Flow()
+        }
+    }
+
+    /// Finishes onboarding when the user already entered their name and has a valid Auth0 session (e.g. returning user).
+    private func tryCompleteAuth0Flow() {
+        guard APIConfig.shouldShowAuth0InUI else { return }
+        guard appState.hasSubmittedNameBeforeAuth0, authManager.isLoggedIn else { return }
+        appState.completeSignInAfterAuth0()
     }
 
     @ViewBuilder
@@ -147,6 +174,159 @@ private extension FaroRootView {
     }
 }
 
+// MARK: - Auth0 gate
+
+/// Step 2 of Auth0 flow: after the user entered their name on ``WelcomeView``.
+struct Auth0GateView: View {
+    @EnvironmentObject private var appState: FaroAppState
+    @EnvironmentObject private var authManager: AuthManager
+    @State private var appeared = false
+
+    var body: some View {
+        ZStack {
+            auth0GateBackdrop
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                VStack(spacing: FaroSpacing.lg) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [FaroPalette.purpleDeep, FaroPalette.purple],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 88, height: 88)
+                            .shadow(color: FaroPalette.purpleDeep.opacity(0.4), radius: 24, y: 8)
+
+                        if let uiIcon = UIImage(named: "AppIcon") {
+                            Image(uiImage: uiIcon)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 60, height: 60)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        } else {
+                            Image(systemName: "shield.checkered")
+                                .font(.system(size: 38, weight: .medium))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .scaleEffect(appeared ? 1.0 : 0.5)
+                    .opacity(appeared ? 1 : 0)
+
+                    VStack(spacing: FaroSpacing.xs) {
+                        Text("Sign in with Auth0")
+                            .font(FaroType.largeTitle())
+                            .foregroundStyle(FaroPalette.ink)
+
+                        Text(auth0GateSubtitle)
+                            .font(FaroType.subheadline())
+                            .foregroundStyle(FaroPalette.ink.opacity(0.55))
+                            .multilineTextAlignment(.center)
+                    }
+                    .offset(y: appeared ? 0 : 20)
+                    .opacity(appeared ? 1 : 0)
+                }
+
+                Spacer().frame(height: FaroSpacing.xl + FaroSpacing.md)
+
+                VStack(spacing: FaroSpacing.md) {
+                    if APIConfig.auth0MissingClientIdOnly {
+                        Text("AUTH0_CLIENT_ID is missing in Info.plist. Add your Auth0 Native application Client ID to enable sign-in.")
+                            .font(FaroType.caption())
+                            .foregroundStyle(FaroPalette.danger)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Button {
+                            Task { await authManager.login() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if authManager.isLoggingIn {
+                                    ProgressView()
+                                        .tint(.white)
+                                } else {
+                                    Image(systemName: "person.badge.key.fill")
+                                        .font(.headline)
+                                }
+                                Text(authManager.isLoggingIn ? "Signing in…" : "Sign in with Auth0")
+                                    .font(FaroType.headline())
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                        }
+                        .buttonStyle(.faroGradient)
+                        .disabled(authManager.isLoggingIn || APIConfig.auth0MissingClientIdOnly)
+                        .frame(maxWidth: 380)
+
+                        if let err = authManager.lastError, !err.isEmpty {
+                            Text(err)
+                                .font(FaroType.caption())
+                                .foregroundStyle(FaroPalette.danger)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .frame(maxWidth: 380)
+                .offset(y: appeared ? 0 : 30)
+                .opacity(appeared ? 1 : 0)
+
+                Spacer()
+            }
+            .padding(.horizontal, FaroSpacing.lg)
+        }
+        .faroCanvasBackground()
+        .task {
+            await authManager.refreshLoginState()
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.8, dampingFraction: 0.75)) {
+                appeared = true
+            }
+        }
+    }
+
+    private var auth0GateSubtitle: String {
+        let first = appState.userFirstName.trimmingCharacters(in: .whitespaces)
+        if !first.isEmpty {
+            return "Thanks, \(first). Use your account to finish and open Faro."
+        }
+        return "Use your account to finish and open Faro."
+    }
+
+    private var auth0GateBackdrop: some View {
+        GeometryReader { geo in
+            let size = min(geo.size.width, geo.size.height) * 0.7
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                FaroPalette.purple.opacity(0.3),
+                                FaroPalette.purpleDeep.opacity(0.1),
+                                Color.clear,
+                            ],
+                            center: .center,
+                            startRadius: size * 0.05,
+                            endRadius: size * 0.55
+                        )
+                    )
+                    .frame(width: size, height: size)
+                    .blur(radius: 60)
+                    .scaleEffect(appeared ? 1.0 : 0.4)
+                    .opacity(appeared ? 1 : 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+
 // MARK: - Welcome / Sign-In
 
 struct WelcomeView: View {
@@ -156,6 +336,8 @@ struct WelcomeView: View {
     @State private var lastName = ""
     @State private var email = ""
     @State private var appeared = false
+    /// Ensures we only clear stale profile / field state once per visit to this screen.
+    @State private var didPrepareFreshNameFields = false
     @FocusState private var focusedField: WelcomeField?
 
     private enum WelcomeField: Hashable {
@@ -210,6 +392,12 @@ struct WelcomeView: View {
                         Text("Your AI-powered insurance companion")
                             .font(FaroType.subheadline())
                             .foregroundStyle(FaroPalette.ink.opacity(0.5))
+
+                        Text(welcomeCaption)
+                            .font(FaroType.caption())
+                            .foregroundStyle(FaroPalette.ink.opacity(0.6))
+                            .multilineTextAlignment(.center)
+                            .padding(.top, FaroSpacing.xs)
                     }
                     .offset(y: appeared ? 0 : 20)
                     .opacity(appeared ? 1 : 0)
@@ -218,19 +406,30 @@ struct WelcomeView: View {
                 Spacer().frame(height: FaroSpacing.xl + FaroSpacing.md)
 
                 VStack(spacing: FaroSpacing.md) {
-                    welcomeField("First name", text: $firstName, focused: .first) {
+                    welcomeField(
+                        "First name (required)",
+                        text: $firstName,
+                        focused: .first,
+                        textContentType: nil
+                    ) {
                         focusedField = .last
                     }
-                    welcomeField("Last name", text: $lastName, focused: .last) {
+                    welcomeField(
+                        "Last name (required)",
+                        text: $lastName,
+                        focused: .last,
+                        textContentType: nil
+                    ) {
                         focusedField = .email
                     }
-                    welcomeField("Email (optional)", text: $email, focused: .email) {
-                        if canContinue { signIn() }
+                    welcomeField(
+                        "Email (optional)",
+                        text: $email,
+                        focused: .email,
+                        textContentType: .emailAddress
+                    ) {
+                        if canContinue { submitWelcome() }
                     }
-                    #if os(iOS)
-                    .keyboardType(.emailAddress)
-                    .textContentType(.emailAddress)
-                    #endif
                 }
                 .frame(maxWidth: 380)
                 .offset(y: appeared ? 0 : 30)
@@ -238,9 +437,9 @@ struct WelcomeView: View {
 
                 Spacer()
 
-                Button(action: signIn) {
+                Button(action: submitWelcome) {
                     HStack(spacing: 8) {
-                        Text("Get Started")
+                        Text(APIConfig.shouldShowAuth0InUI ? "Continue" : "Get Started")
                             .font(FaroType.headline())
                         Image(systemName: "arrow.right")
                             .font(.subheadline.weight(.semibold))
@@ -255,53 +454,12 @@ struct WelcomeView: View {
                 .padding(.bottom, FaroSpacing.lg)
                 .offset(y: appeared ? 0 : 40)
                 .opacity(appeared ? 1 : 0)
-
-                if APIConfig.shouldShowAuth0InUI {
-                    VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-                        if APIConfig.auth0MissingClientIdOnly {
-                            Text("Auth0 Client ID is missing. Set AUTH0_CLIENT_ID in Info.plist (see Profile → Auth0).")
-                                .font(FaroType.caption())
-                                .foregroundStyle(FaroPalette.danger)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } else if authManager.isLoggedIn {
-                            Label("API sign-in ready", systemImage: "checkmark.seal.fill")
-                                .font(FaroType.subheadline(.medium))
-                                .foregroundStyle(FaroPalette.success)
-                        } else {
-                            Text("This environment uses Auth0 for the Faro API. Sign in so analysis requests succeed.")
-                                .font(FaroType.caption())
-                                .foregroundStyle(FaroPalette.ink.opacity(0.55))
-                                .fixedSize(horizontal: false, vertical: true)
-                            Button {
-                                Task { await authManager.login() }
-                            } label: {
-                                Label("Sign in with Auth0", systemImage: "person.badge.key.fill")
-                                    .font(FaroType.headline())
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 52)
-                            }
-                            .buttonStyle(.faroGradient)
-                            .tint(FaroPalette.purpleDeep)
-                            if let err = authManager.lastError, !err.isEmpty {
-                                Text(err)
-                                    .font(FaroType.caption())
-                                    .foregroundStyle(FaroPalette.danger)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: 380)
-                    .padding(.bottom, FaroSpacing.xl)
-                    .offset(y: appeared ? 0 : 40)
-                    .opacity(appeared ? 1 : 0)
-                }
             }
             .padding(.horizontal, FaroSpacing.lg)
         }
         .faroCanvasBackground()
-        .task {
-            await authManager.refreshLoginState()
-        }
         .onAppear {
+            prepareFreshNameEntryIfNeeded()
             withAnimation(.spring(response: 0.8, dampingFraction: 0.75)) {
                 appeared = true
             }
@@ -313,10 +471,30 @@ struct WelcomeView: View {
 
     // MARK: - Helpers
 
+    /// Drop stale UserDefaults and clear fields before the user types their name (Auth0 flow, step 1).
+    private func prepareFreshNameEntryIfNeeded() {
+        guard !didPrepareFreshNameFields else { return }
+        if APIConfig.shouldShowAuth0InUI, !appState.hasSubmittedNameBeforeAuth0 {
+            appState.resetProfileForManualNameEntryIfNeeded()
+            firstName = ""
+            lastName = ""
+            email = ""
+        }
+        didPrepareFreshNameFields = true
+    }
+
+    private var welcomeCaption: String {
+        if APIConfig.shouldShowAuth0InUI {
+            return "Step 1 of 2 — enter your name. You’ll sign in with Auth0 next."
+        }
+        return "Enter your first and last name to continue."
+    }
+
     private func welcomeField(
         _ placeholder: String,
         text: Binding<String>,
         focused: WelcomeField,
+        textContentType: UITextContentType?,
         onSubmit action: @escaping () -> Void
     ) -> some View {
         TextField(placeholder, text: text)
@@ -324,7 +502,10 @@ struct WelcomeView: View {
             .focused($focusedField, equals: focused)
             .onSubmit(action)
             #if os(iOS)
+            .textContentType(textContentType)
+            .keyboardType(focused == .email ? .emailAddress : .default)
             .textInputAutocapitalization(.words)
+            .autocorrectionDisabled(focused != .email)
             #endif
             .padding(.horizontal, FaroSpacing.md)
             .frame(height: 52)
@@ -359,9 +540,16 @@ struct WelcomeView: View {
         .allowsHitTesting(false)
     }
 
-    private func signIn() {
+    private func submitWelcome() {
         guard canContinue else { return }
-        appState.signIn(firstName: firstName, lastName: lastName, email: email)
+        let f = firstName.trimmingCharacters(in: .whitespaces)
+        let l = lastName.trimmingCharacters(in: .whitespaces)
+        let e = email.trimmingCharacters(in: .whitespaces)
+        if APIConfig.shouldShowAuth0InUI {
+            appState.saveNameBeforeAuth0(firstName: f, lastName: l, email: e)
+        } else {
+            appState.signIn(firstName: f, lastName: l, email: e)
+        }
     }
 }
 

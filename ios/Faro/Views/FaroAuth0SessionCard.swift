@@ -4,6 +4,7 @@ import SwiftUI
 
 /// Sign in / out and plist hints. Keep Auth0 UI in one place.
 struct FaroAuthCard: View {
+    @EnvironmentObject private var appState: FaroAppState
     @EnvironmentObject private var authManager: AuthManager
 
     var body: some View {
@@ -32,7 +33,10 @@ struct FaroAuthCard: View {
                 Label("Signed in", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(FaroPalette.success)
                 Button("Sign out") {
-                    Task { await authManager.logout() }
+                    Task {
+                        await authManager.logout()
+                        appState.signOut()
+                    }
                 }
                 .font(FaroType.subheadline(.medium))
                 .foregroundStyle(FaroPalette.purpleDeep)
