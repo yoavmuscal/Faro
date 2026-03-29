@@ -37,6 +37,7 @@
 		F10000000000000000000003 /* FaroWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F10000000000000000000016 /* FaroWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A90000000000000000000003 /* Auth0 in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* Auth0 */; };
 		A90000000000000000000004 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90000000000000000000006 /* AuthManager.swift */; };
+		B000000000000000000000019 /* FaroAuth0SessionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000019 /* FaroAuth0SessionCard.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -99,6 +100,7 @@
 		F10000000000000000000015 /* FaroWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FaroWidget.entitlements; sourceTree = "<group>"; };
 		F10000000000000000000016 /* FaroWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FaroWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A90000000000000000000006 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
+		A000000000000000000000019 /* FaroAuth0SessionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroAuth0SessionCard.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -181,6 +183,7 @@
 				A000000000000000000000016 /* SummaryPlayerView.swift */,
 				67E0A0E48F9A0581272CB66D /* IntakeChoiceView.swift */,
 				3F338361E0FEDBF598F429A5 /* VoiceIntakeView.swift */,
+				A000000000000000000000019 /* FaroAuth0SessionCard.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -363,6 +366,7 @@
 				9E704778F101D3B30AD1FBF8 /* IntakeChoiceView.swift in Sources */,
 				118A2A870EA2E089E7C31A73 /* VoiceIntakeView.swift in Sources */,
 				A90000000000000000000004 /* AuthManager.swift in Sources */,
+				B000000000000000000000019 /* FaroAuth0SessionCard.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

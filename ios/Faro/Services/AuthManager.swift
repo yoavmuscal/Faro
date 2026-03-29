@@ -1,5 +1,4 @@
 import Auth0
-import Combine
 import Foundation
 import SwiftUI
 
@@ -7,6 +6,7 @@ import SwiftUI
 @MainActor
 final class AuthManager: ObservableObject {
     @Published private(set) var isLoggedIn = false
+    @Published private(set) var isLoggingIn = false
     @Published private(set) var lastError: String?
 
     private let credentialsManager: CredentialsManager?
@@ -66,13 +66,14 @@ final class AuthManager: ObservableObject {
             return
         }
         lastError = nil
+        isLoggingIn = true
+        defer { isLoggingIn = false }
         do {
             let credentials = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Credentials, Error>) in
                 Auth0.webAuth(clientId: clientId, domain: domain)
                     .redirectURL(callbackURL)
                     .audience(audience)
                     .scope("openid profile email offline_access")
-                    // Omit useEphemeralSession: ephemeral sessions often break return-to-app / SSO during debugging.
                     .start { result in
                         switch result {
                         case .success(let creds):
@@ -83,15 +84,22 @@ final class AuthManager: ObservableObject {
                     }
             }
             guard credentialsManager.store(credentials: credentials) else {
-                lastError = "Could not store credentials in the keychain."
+                lastError = "Couldn’t save your session. Try signing in again."
                 isLoggedIn = false
                 return
             }
+            lastError = nil
             isLoggedIn = true
         } catch {
-            lastError = error.localizedDescription
+            lastError = Self.friendlyLoginMessage(for: error)
             isLoggedIn = false
         }
+    }
+
+    private static func friendlyLoginMessage(for error: Error) -> String? {
+        let text = error.localizedDescription.lowercased()
+        if text.contains("cancel") { return nil }
+        return error.localizedDescription
     }
 
     func logout() async {
@@ -114,5 +122,22 @@ final class AuthManager: ObservableObject {
         guard let bundleId = Bundle.main.bundleIdentifier,
               let host = APIConfig.auth0Domain else { return nil }
         return URL(string: "\(bundleId).auth0://\(host)/ios/\(bundleId)/callback")
+    }
+
+    /// Names/email from the ID token for finishing welcome after **Log in** without filling the form.
+    func welcomeProfileFromSession() -> (firstName: String, lastName: String, email: String) {
+        guard let credentialsManager,
+              let user = credentialsManager.user else {
+            return ("User", "", "")
+        }
+        let email = user.email ?? ""
+        let full = user.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if full.isEmpty {
+            return ("User", "", email)
+        }
+        let parts = full.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        let first = String(parts.first ?? "User")
+        let last = parts.count > 1 ? String(parts[1]) : ""
+        return (first, last, email)
     }
 }
