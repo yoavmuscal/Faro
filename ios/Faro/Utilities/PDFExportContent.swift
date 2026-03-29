@@ -89,6 +89,11 @@ enum PDFExportContent {
 
     // MARK: - Submission packet
 
+    private static func nonEmptyTrim(_ s: String?) -> String? {
+        guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        return t
+    }
+
     private static func submissionPacketParagraphs(_ packet: SubmissionPacket) -> [String] {
         var lines: [String] = []
 
@@ -151,7 +156,18 @@ enum PDFExportContent {
         if let coverages = packet.requestedCoverages, !coverages.isEmpty {
             lines.append("— Requested coverages —")
             for cov in coverages {
-                lines.append("• \(cov.type ?? "Coverage")")
+                let headlineResolved = nonEmptyTrim(cov.policyProductName) ?? nonEmptyTrim(cov.type)
+                lines.append("• \(headlineResolved ?? "Coverage")")
+                if let t = nonEmptyTrim(cov.type), let h = headlineResolved,
+                   t.caseInsensitiveCompare(h) != .orderedSame {
+                    appendFieldLine(&lines, "  Line", t)
+                }
+                if let forms = cov.standardForms, !forms.isEmpty {
+                    lines.append("  Forms: \(forms.joined(separator: ", "))")
+                }
+                if let m = cov.typicalMarkets?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty {
+                    lines.append("  Markets: \(m)")
+                }
                 appendFieldLine(&lines, "  Limits", cov.limits)
                 appendFieldLine(&lines, "  Deductible", cov.deductible)
                 appendFieldLine(&lines, "  Effective", cov.effectiveDate)

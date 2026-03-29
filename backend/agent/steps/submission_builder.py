@@ -37,6 +37,12 @@ Requested Coverage:
 Generate a carrier-ready submission packet. This is what a broker sends to underwriters.
 Include all standard fields that commercial insurance carriers require.
 
+For each entry in `requested_coverages`, be pragmatic and specific:
+- `type`: short line label (e.g. "General Liability", "Workers Compensation").
+- `policy_product_name`: formal policy / product name underwriters recognize (e.g. "Commercial General Liability (occurrence form)", "Workers Compensation and Employers Liability").
+- `standard_forms`: array of real application / supplement form references typically used (e.g. ACORD 125, ACORD 126, ACORD 140, state-specific WC forms). Use industry-standard designations; do not invent carrier-specific form numbers.
+- `typical_markets`: one or two sentences describing who usually underwrites this line (e.g. admitted commercial carriers vs surplus/E&S markets, MGAs/wholesalers, monoline WC carriers). Do not quote premiums or imply a binding quote.
+
 Return JSON with this structure:
 {{
   "submission_date": "{today}",
@@ -84,6 +90,9 @@ Return JSON with this structure:
   "requested_coverages": [
     {{
       "type": "string",
+      "policy_product_name": "string",
+      "standard_forms": ["ACORD 125", "..."],
+      "typical_markets": "string — admitted vs E&S, MGAs, monoline, etc.",
       "limits": "string",
       "deductible": "string",
       "effective_date": "YYYY-MM-DD",

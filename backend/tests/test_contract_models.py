@@ -198,6 +198,9 @@ class ContractModelTests(unittest.TestCase):
                 "requested_coverages": [
                     {
                         "type": "Cyber Liability",
+                        "policy_product_name": "Cyber / Privacy Liability",
+                        "standard_forms": ["ACORD 127", "ACORD 131"],
+                        "typical_markets": "Admitted cyber markets and E&S for tougher classes.",
                         "limits": "$1M",
                         "deductible": "$1,000",
                         "effective_date": "2026-03-28",
@@ -219,6 +222,10 @@ class ContractModelTests(unittest.TestCase):
         )
         self.assertEqual(response.submission_packet.operations.employees.total, 12)
         self.assertEqual(response.voice_summary_url, "/audio/test-session")
+        sub_cov = response.submission_packet.requested_coverages[0]
+        self.assertEqual(sub_cov.policy_product_name, "Cyber / Privacy Liability")
+        self.assertEqual(sub_cov.standard_forms, ["ACORD 127", "ACORD 131"])
+        self.assertIn("E&S", sub_cov.typical_markets or "")
 
 
 if __name__ == "__main__":

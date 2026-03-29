@@ -1,6 +1,18 @@
 import SwiftUI
 import AVFoundation
 
+private final class SummarySpeechDelegate: NSObject, AVSpeechSynthesizerDelegate {
+    var onFinish: (() -> Void)?
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in onFinish?() }
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in onFinish?() }
+    }
+}
+
 struct SummaryPlayerView: View {
     let summary: String
     let voiceURL: String
@@ -22,7 +34,7 @@ struct SummaryPlayerView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, FaroSpacing.md)
 
-                if !voiceURL.isEmpty {
+                if showVoiceCard {
                     audioPlayerCard
                         .padding(.horizontal, FaroSpacing.md)
                 }
@@ -41,20 +53,22 @@ struct SummaryPlayerView: View {
         #endif
     }
 
+    private var showVoiceCard: Bool {
+        let u = voiceURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let s = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !u.isEmpty || !s.isEmpty
+    }
+
     private var audioPlayerCard: some View {
         VStack(spacing: FaroSpacing.md) {
             HStack(spacing: FaroSpacing.md) {
                 Button {
                     if player.isPlaying {
-                        player.pause()
+                        player.stop()
                     } else {
-                        let urlString: String
-                        if voiceURL.hasPrefix("/") {
-                            urlString = APIConfig.httpBaseURL + voiceURL
-                        } else {
-                            urlString = voiceURL
+                        Task {
+                            await player.play(voiceURLPath: voiceURL, fallbackText: summary)
                         }
-                        player.play(url: urlString)
                     }
                 } label: {
                     ZStack {
@@ -116,42 +130,124 @@ struct SummaryPlayerView: View {
 final class SummaryAudioPlayer: ObservableObject {
     @Published var isPlaying = false
     private var avPlayer: AVPlayer?
-    nonisolated(unsafe) private var endObserver: NSObjectProtocol?
+    private var voiceTempFileURL: URL?
+    private var endObserver: NSObjectProtocol?
+    private var failObserver: NSObjectProtocol?
+    private var speechSynth: AVSpeechSynthesizer?
+    private var speechDelegate: SummarySpeechDelegate?
 
-    func play(url: String) {
-        guard let audioURL = URL(string: url) else { return }
+    func play(voiceURLPath: String, fallbackText: String) async {
+        let trimmedURL = voiceURLPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedText = fallbackText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedURL.isEmpty || !trimmedText.isEmpty else { return }
+
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.duckOthers])
         try? AVAudioSession.sharedInstance().setActive(true)
         #endif
-        if let endObserver {
-            NotificationCenter.default.removeObserver(endObserver)
-            self.endObserver = nil
-        }
-        let item = AVPlayerItem(url: audioURL)
-        avPlayer = AVPlayer(playerItem: item)
 
+        stop()
+        isPlaying = true
+
+        if !trimmedURL.isEmpty {
+            do {
+                let data = try await APIService.shared.fetchVoiceSummaryData(from: trimmedURL)
+                let temp = FileManager.default.temporaryDirectory.appendingPathComponent("faro-summary-\(UUID().uuidString).mp3")
+                try data.write(to: temp)
+                voiceTempFileURL = temp
+                let item = AVPlayerItem(url: temp)
+                avPlayer = AVPlayer(playerItem: item)
+                attachPlayerObservers(item: item, fallbackText: trimmedText)
+                avPlayer?.play()
+                return
+            } catch {
+                // Fall through to speech.
+            }
+        }
+
+        if !trimmedText.isEmpty {
+            startSpeech(trimmedText)
+            return
+        }
+
+        isPlaying = false
+    }
+
+    private func attachPlayerObservers(item: AVPlayerItem, fallbackText: String) {
+        removeObservers()
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.isPlaying = false }
+            Task { @MainActor in
+                self?.isPlaying = false
+                self?.teardownTemp()
+            }
         }
-
-        avPlayer?.play()
-        isPlaying = true
+        failObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.removeObservers()
+                self?.avPlayer = nil
+                self?.teardownTemp()
+                if !fallbackText.isEmpty {
+                    self?.isPlaying = true
+                    self?.startSpeech(fallbackText)
+                } else {
+                    self?.isPlaying = false
+                }
+            }
+        }
     }
 
-    func pause() {
+    private func startSpeech(_ text: String) {
+        let synth = AVSpeechSynthesizer()
+        let del = SummarySpeechDelegate()
+        del.onFinish = { [weak self] in
+            guard let self else { return }
+            self.isPlaying = false
+            self.speechSynth = nil
+            self.speechDelegate = nil
+        }
+        synth.delegate = del
+        speechSynth = synth
+        speechDelegate = del
+        let u = AVSpeechUtterance(string: text)
+        u.voice = AVSpeechSynthesisVoice(language: "en-US")
+        synth.speak(u)
+    }
+
+    private func removeObservers() {
+        if let o = endObserver {
+            NotificationCenter.default.removeObserver(o)
+            endObserver = nil
+        }
+        if let o = failObserver {
+            NotificationCenter.default.removeObserver(o)
+            failObserver = nil
+        }
+    }
+
+    private func teardownTemp() {
+        if let u = voiceTempFileURL {
+            try? FileManager.default.removeItem(at: u)
+            voiceTempFileURL = nil
+        }
+    }
+
+    func stop() {
+        removeObservers()
         avPlayer?.pause()
+        avPlayer = nil
+        teardownTemp()
+        speechSynth?.stopSpeaking(at: .immediate)
+        speechSynth = nil
+        speechDelegate = nil
         isPlaying = false
-    }
-
-    deinit {
-        if let endObserver {
-            NotificationCenter.default.removeObserver(endObserver)
-        }
     }
 }
 

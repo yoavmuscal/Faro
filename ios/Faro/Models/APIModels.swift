@@ -276,16 +276,44 @@ struct SubmissionLoss: Codable {
 
 struct SubmissionRequestedCoverage: Codable, Identifiable {
     let type: String?
+    let policyProductName: String?
+    let standardForms: [String]?
+    let typicalMarkets: String?
     let limits: String?
     let deductible: String?
     let effectiveDate: String?
     let notes: String?
 
-    var id: String { type ?? UUID().uuidString }
+    var id: String {
+        [type, policyProductName, effectiveDate].compactMap { $0 }.joined(separator: "|")
+    }
 
     enum CodingKeys: String, CodingKey {
         case type, limits, deductible, notes
         case effectiveDate = "effective_date"
+        case policyProductName = "policy_product_name"
+        case standardForms = "standard_forms"
+        case typicalMarkets = "typical_markets"
+    }
+
+    init(
+        type: String? = nil,
+        policyProductName: String? = nil,
+        standardForms: [String]? = nil,
+        typicalMarkets: String? = nil,
+        limits: String? = nil,
+        deductible: String? = nil,
+        effectiveDate: String? = nil,
+        notes: String? = nil
+    ) {
+        self.type = type
+        self.policyProductName = policyProductName
+        self.standardForms = standardForms
+        self.typicalMarkets = typicalMarkets
+        self.limits = limits
+        self.deductible = deductible
+        self.effectiveDate = effectiveDate
+        self.notes = notes
     }
 }
 

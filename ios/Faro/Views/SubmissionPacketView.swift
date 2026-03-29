@@ -1,5 +1,11 @@
 import SwiftUI
 
+private func faroTrimmedNonEmpty(_ s: String?) -> String? {
+    guard let raw = s else { return nil }
+    let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    return t.isEmpty ? nil : t
+}
+
 struct SubmissionPacketView: View {
     let packet: SubmissionPacket
     let businessName: String
@@ -111,11 +117,43 @@ struct SubmissionPacketView: View {
         VStack(alignment: .leading, spacing: FaroSpacing.sm) {
             SectionHeader(title: "Requested Coverages", icon: "shield.checkered", tint: FaroPalette.purpleDeep)
 
-            ForEach(coverages) { cov in
+            ForEach(Array(coverages.enumerated()), id: \.offset) { _, cov in
                 VStack(alignment: .leading, spacing: FaroSpacing.xs) {
-                    Text(cov.type ?? "Coverage")
+                    let headline = faroTrimmedNonEmpty(cov.policyProductName) ?? faroTrimmedNonEmpty(cov.type)
+                    Text(headline ?? "Coverage")
                         .font(FaroType.subheadline(.semibold))
                         .foregroundStyle(FaroPalette.ink)
+
+                    if let shortType = faroTrimmedNonEmpty(cov.type),
+                       faroTrimmedNonEmpty(cov.policyProductName) != nil,
+                       shortType.caseInsensitiveCompare(headline ?? "") != .orderedSame {
+                        Text(shortType)
+                            .font(FaroType.caption())
+                            .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                    }
+
+                    if let forms = cov.standardForms, !forms.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Standard forms")
+                                .font(FaroType.caption2())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                            Text(forms.joined(separator: ", "))
+                                .font(FaroType.caption())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.75))
+                        }
+                    }
+
+                    if let markets = faroTrimmedNonEmpty(cov.typicalMarkets) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Typical markets")
+                                .font(FaroType.caption2())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                            Text(markets)
+                                .font(FaroType.caption())
+                                .foregroundStyle(FaroPalette.ink.opacity(0.75))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
 
                     HStack(spacing: FaroSpacing.md) {
                         if let limits = cov.limits {
@@ -276,8 +314,26 @@ private struct MiniField: View {
                 ),
                 lossHistory: [],
                 requestedCoverages: [
-                    SubmissionRequestedCoverage(type: "General Liability", limits: "$1M / $2M", deductible: "$1,000", effectiveDate: "2026-04-01", notes: nil),
-                    SubmissionRequestedCoverage(type: "Workers Compensation", limits: "Statutory", deductible: "N/A", effectiveDate: "2026-04-01", notes: "12 employees — NJ statutory requirement"),
+                    SubmissionRequestedCoverage(
+                        type: "General Liability",
+                        policyProductName: "Commercial General Liability (occurrence)",
+                        standardForms: ["ACORD 125", "ACORD 126", "ACORD 140 (GL)"],
+                        typicalMarkets: "Typically placed with admitted commercial carriers and retail brokers; tougher classes may go to E&S.",
+                        limits: "$1M / $2M",
+                        deductible: "$1,000",
+                        effectiveDate: "2026-04-01",
+                        notes: nil
+                    ),
+                    SubmissionRequestedCoverage(
+                        type: "Workers Compensation",
+                        policyProductName: "Workers Compensation and Employers Liability",
+                        standardForms: ["ACORD 130", "State WC application (NJ)"],
+                        typicalMarkets: "Monoline workers comp carriers, state funds, and PEOs in some structures.",
+                        limits: "Statutory",
+                        deductible: "N/A",
+                        effectiveDate: "2026-04-01",
+                        notes: "12 employees — NJ statutory requirement"
+                    ),
                 ],
                 underwriterNotes: [
                     "Daycare operations require enhanced abuse & molestation coverage",

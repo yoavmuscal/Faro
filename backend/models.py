@@ -383,10 +383,26 @@ class SubmissionLoss(FaroBaseModel):
 
 class SubmissionRequestedCoverage(FaroBaseModel):
     type: Optional[str] = None
+    policy_product_name: Optional[str] = None
+    standard_forms: Optional[list[str]] = None
+    typical_markets: Optional[str] = None
     limits: Optional[str] = None
     deductible: Optional[str] = None
     effective_date: Optional[str] = None
     notes: Optional[str] = None
+
+    @field_validator("standard_forms", mode="before")
+    @classmethod
+    def _coerce_standard_forms(cls, value: Any) -> Optional[list[str]]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return [stripped] if stripped else None
+        if isinstance(value, list):
+            out = [str(x).strip() for x in value if str(x).strip()]
+            return out or None
+        return None
 
 
 class SubmissionPacket(FaroBaseModel):
@@ -760,6 +776,9 @@ def _normalize_requested_coverages(
         strengthened = [
             SubmissionRequestedCoverage(
                 type=item.type,
+                policy_product_name=item.policy_product_name,
+                standard_forms=item.standard_forms,
+                typical_markets=item.typical_markets,
                 limits=item.limits or _default_limits_for_coverage(item.type or ""),
                 deductible=item.deductible or _default_deductible_for_coverage(item.type or ""),
                 effective_date=item.effective_date or date.today().isoformat(),
@@ -774,6 +793,9 @@ def _normalize_requested_coverages(
     return [
         SubmissionRequestedCoverage(
             type=requirement.type,
+            policy_product_name=None,
+            standard_forms=None,
+            typical_markets=None,
             limits=_default_limits_for_coverage(requirement.type),
             deductible=_default_deductible_for_coverage(requirement.type),
             effective_date=date.today().isoformat(),

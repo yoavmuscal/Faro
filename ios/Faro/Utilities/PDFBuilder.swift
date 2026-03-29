@@ -1045,34 +1045,39 @@ enum PDFBuilder {
             )
             y += 18
             for c in cov {
-                let title = c.type ?? "Coverage"
-                let sub = [c.limits, c.deductible, c.effectiveDate].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: " · ")
-                ensureSpace(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: 44)
-                let row = CGRect(x: margin, y: y, width: contentWidth, height: 40)
-                ctx.cgContext.setFillColor(PDFTheme.lightLavender.cgColor)
-                ctx.cgContext.fill(row)
-                ctx.cgContext.setFillColor(PDFTheme.accentPurple.cgColor)
-                ctx.cgContext.fill(CGRect(x: margin, y: y, width: 4, height: 40))
-                var titleBase: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 11, weight: .semibold),
-                    .foregroundColor: PDFTheme.bodyText,
-                ]
-                let tp = NSMutableParagraphStyle()
-                tp.alignment = .natural
-                titleBase[.paragraphStyle] = tp
-                let titleAttr = attributedStringWithBoldAsterisks(title, baseAttributes: titleBase)
-                titleAttr.draw(in: CGRect(x: margin + 12, y: y + 6, width: contentWidth - 16, height: 16))
-                if !sub.isEmpty {
-                    var cap = captionAttrs
-                    if cap[.paragraphStyle] == nil {
-                        let p = NSMutableParagraphStyle()
-                        p.alignment = .natural
-                        cap[.paragraphStyle] = p
-                    }
-                    let subAttr = attributedStringWithBoldAsterisks(sub, baseAttributes: cap)
-                    subAttr.draw(in: CGRect(x: margin + 12, y: y + 22, width: contentWidth - 16, height: 14))
+                let prod = c.policyProductName?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let headline = (prod?.isEmpty == false ? prod : nil) ?? c.type ?? "Coverage"
+                var parts: [String] = []
+                if let t = c.type?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty,
+                   t.caseInsensitiveCompare(headline) != .orderedSame {
+                    parts.append("Line: \(t)")
                 }
-                y += 46
+                if let forms = c.standardForms, !forms.isEmpty {
+                    parts.append("Forms: \(forms.joined(separator: ", "))")
+                }
+                if let m = c.typicalMarkets?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty {
+                    parts.append("Markets: \(m)")
+                }
+                let limitsLine = [c.limits, c.deductible, c.effectiveDate]
+                    .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · ")
+                if !limitsLine.isEmpty {
+                    parts.append(limitsLine)
+                }
+                if let n = c.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty {
+                    parts.append("Notes: \(n)")
+                }
+                let block = ([headline] + parts).joined(separator: "\n")
+                drawMultilineCallout(
+                    ctx: ctx,
+                    y: &y,
+                    margin: margin,
+                    contentWidth: contentWidth,
+                    pageHeight: pageHeight,
+                    text: block,
+                    bodyAttrs: bodyAttrs
+                )
             }
         }
 

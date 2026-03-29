@@ -8,6 +8,18 @@ private struct PDFShareDocument: Identifiable {
     let url: URL
 }
 
+private final class SpeechSynthDelegate: NSObject, AVSpeechSynthesizerDelegate {
+    var onFinish: (() -> Void)?
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in onFinish?() }
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in onFinish?() }
+    }
+}
+
 // MARK: - View Model
 
 @MainActor
@@ -16,10 +28,22 @@ final class CoverageDashboardViewModel: ObservableObject {
     @Published var isGeneratingPDF = false
 
     private var audioPlayer: AVPlayer?
+    private var voiceTempFileURL: URL?
+    private var playEndObserver: NSObjectProtocol?
+    private var playFailObserver: NSObjectProtocol?
+    private var speechSynth: AVSpeechSynthesizer?
+    private var speechDelegate: SpeechSynthDelegate?
+
     let results: ResultsResponse
 
     init(results: ResultsResponse) {
         self.results = results
+    }
+
+    var canHearSummary: Bool {
+        let urlOk = !results.voiceSummaryUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let text = results.plainEnglishSummary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return urlOk || !text.isEmpty
     }
 
     func preparePlaybackSession() {
@@ -33,33 +57,111 @@ final class CoverageDashboardViewModel: ObservableObject {
         #endif
     }
 
-    func playVoiceSummary() {
-        guard !results.voiceSummaryUrl.isEmpty else { return }
+    func playVoiceSummary() async {
+        guard canHearSummary else { return }
         preparePlaybackSession()
+        stopAudio()
         isPlayingAudio = true
 
-        let urlString: String
-        if results.voiceSummaryUrl.hasPrefix("/") {
-            urlString = APIConfig.httpBaseURL + results.voiceSummaryUrl
-        } else {
-            urlString = results.voiceSummaryUrl
+        let trimmedURL = results.voiceSummaryUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedURL.isEmpty {
+            do {
+                let data = try await APIService.shared.fetchVoiceSummaryData(from: trimmedURL)
+                let temp = FileManager.default.temporaryDirectory.appendingPathComponent("faro-voice-\(UUID().uuidString).mp3")
+                try data.write(to: temp)
+                voiceTempFileURL = temp
+                let item = AVPlayerItem(url: temp)
+                audioPlayer = AVPlayer(playerItem: item)
+                registerPlayerObservers(for: item)
+                audioPlayer?.play()
+                return
+            } catch {
+                // Fall through to on-device TTS when configured or network fails.
+            }
         }
 
-        guard let url = URL(string: urlString) else { return }
-        let item = AVPlayerItem(url: url)
-        audioPlayer = AVPlayer(playerItem: item)
-        NotificationCenter.default.addObserver(
+        if let text = results.plainEnglishSummary?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            startSpeechSummary(text)
+            return
+        }
+
+        isPlayingAudio = false
+    }
+
+    private func registerPlayerObservers(for item: AVPlayerItem) {
+        removePlayerObservers()
+        playEndObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.isPlayingAudio = false }
+            Task { @MainActor in
+                self?.isPlayingAudio = false
+                self?.teardownVoiceTempFile()
+            }
         }
-        audioPlayer?.play()
+        playFailObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.removePlayerObservers()
+                self?.audioPlayer = nil
+                self?.teardownVoiceTempFile()
+                if let text = self?.results.plainEnglishSummary?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                    self?.isPlayingAudio = true
+                    self?.startSpeechSummary(text)
+                } else {
+                    self?.isPlayingAudio = false
+                }
+            }
+        }
+    }
+
+    private func removePlayerObservers() {
+        if let o = playEndObserver {
+            NotificationCenter.default.removeObserver(o)
+            playEndObserver = nil
+        }
+        if let o = playFailObserver {
+            NotificationCenter.default.removeObserver(o)
+            playFailObserver = nil
+        }
+    }
+
+    private func teardownVoiceTempFile() {
+        if let u = voiceTempFileURL {
+            try? FileManager.default.removeItem(at: u)
+            voiceTempFileURL = nil
+        }
+    }
+
+    private func startSpeechSummary(_ text: String) {
+        let synth = AVSpeechSynthesizer()
+        let del = SpeechSynthDelegate()
+        del.onFinish = { [weak self] in
+            guard let self else { return }
+            self.isPlayingAudio = false
+            self.speechSynth = nil
+            self.speechDelegate = nil
+        }
+        synth.delegate = del
+        speechSynth = synth
+        speechDelegate = del
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        synth.speak(utterance)
     }
 
     func stopAudio() {
+        removePlayerObservers()
         audioPlayer?.pause()
+        audioPlayer = nil
+        teardownVoiceTempFile()
+        speechSynth?.stopSpeaking(at: .immediate)
+        speechSynth = nil
+        speechDelegate = nil
         isPlayingAudio = false
     }
 }
@@ -262,7 +364,11 @@ struct CoverageDashboardView: View {
     private var actionButtons: some View {
         VStack(spacing: FaroSpacing.sm + 2) {
             Button {
-                if vm.isPlayingAudio { vm.stopAudio() } else { vm.playVoiceSummary() }
+                if vm.isPlayingAudio {
+                    vm.stopAudio()
+                } else {
+                    Task { await vm.playVoiceSummary() }
+                }
             } label: {
                 Label(
                     vm.isPlayingAudio ? "Stop" : "Hear your summary",
@@ -273,7 +379,7 @@ struct CoverageDashboardView: View {
                 .frame(height: 56)
             }
             .buttonStyle(.faroGradient)
-            .disabled(results.voiceSummaryUrl.isEmpty)
+            .disabled(!vm.canHearSummary)
 
             Button {
                 Task { await exportPDF() }
@@ -614,7 +720,7 @@ extension CoverageOption: Hashable {
                 voiceSummaryUrl: "",
                 riskProfile: nil,
                 submissionPacket: nil,
-                plainEnglishSummary: nil
+                plainEnglishSummary: "Preview: tap Hear your summary to use device text-to-speech when no audio URL is set."
             ),
             sessionId: "preview"
         )

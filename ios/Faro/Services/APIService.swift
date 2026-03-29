@@ -131,6 +131,29 @@ actor APIService {
         return try decoder.decode(StatusResponse.self, from: data)
     }
 
+    // MARK: - GET /audio/{session_id} (authenticated binary)
+
+    /// Fetches voice summary MP3 (or any authenticated GET). Resolves relative paths against `baseURL`.
+    func fetchVoiceSummaryData(from pathOrAbsoluteURL: String) async throws -> Data {
+        let s = pathOrAbsoluteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let urlString: String
+        if s.hasPrefix("http://") || s.hasPrefix("https://") {
+            urlString = s
+        } else if s.hasPrefix("/") {
+            urlString = baseURL + s
+        } else {
+            urlString = baseURL + "/" + s
+        }
+        guard let url = URL(string: urlString) else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        await applyAuth(&request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response, data: data)
+        return data
+    }
+
     // MARK: - Helpers
 
     private func validate(_ response: URLResponse, data: Data) throws {

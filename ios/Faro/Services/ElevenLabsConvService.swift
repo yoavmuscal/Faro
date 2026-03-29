@@ -38,6 +38,9 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
     @Published var state: ConnectionState = .disconnected
     @Published var transcript: [ConvTranscriptTurn] = []
     @Published var isAgentSpeaking: Bool = false
+    /// Mic energy while the agent is not taking the floor (client-side VAD for UI).
+    @Published var isUserSpeaking: Bool = false
+    private var micSilenceTask: Task<Void, Never>?
     private nonisolated(unsafe) var _agentSpeaking = false
     private nonisolated(unsafe) var _pendingBuffers: Int32 = 0
 
@@ -136,6 +139,9 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
         #endif
 
         micConverter = nil
+        micSilenceTask?.cancel()
+        micSilenceTask = nil
+        isUserSpeaking = false
         resetSessionAudioState()
     }
 
@@ -406,6 +412,31 @@ final class ElevenLabsLiveConversationService: NSObject, ObservableObject, URLSe
         guard err == nil, status != .error, outBuf.frameLength > 0 else { return }
 
         guard let ch0 = outBuf.int16ChannelData else { return }
+
+        let frameN = Int(outBuf.frameLength)
+        if frameN > 0 {
+            var sum: Float = 0
+            let ptr = ch0[0]
+            for i in 0..<frameN {
+                let s = Float(ptr[i]) / 32_768.0
+                sum += s * s
+            }
+            let rms = sqrt(sum / Float(frameN))
+            let threshold: Float = 0.018
+            if rms > threshold {
+                Task { @MainActor in
+                    guard case .connected = self.state else { return }
+                    self.isUserSpeaking = true
+                    self.micSilenceTask?.cancel()
+                    self.micSilenceTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 280_000_000)
+                        guard !Task.isCancelled else { return }
+                        self.isUserSpeaking = false
+                    }
+                }
+            }
+        }
+
         let byteCount = Int(outBuf.frameLength) * MemoryLayout<Int16>.size
         let pcm = Data(bytes: ch0[0], count: byteCount)
         let base64 = pcm.base64EncodedString()
