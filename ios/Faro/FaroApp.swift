@@ -33,8 +33,5 @@ struct FaroApp: App {
                     _ = WebAuthentication.resume(with: url)
                 }
         }
-        #if os(macOS)
-        .defaultSize(width: 960, height: 720)
-        #endif
     }
 }

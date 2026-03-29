@@ -29,9 +29,6 @@ enum FaroSection: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    static var analysisSections: [FaroSection] {
-        [.coverage, .riskProfile, .submission]
-    }
 }
 
 struct FaroRootView: View {
@@ -61,15 +58,6 @@ struct FaroRootView: View {
 
     @ViewBuilder
     private var mainContent: some View {
-        #if os(macOS)
-        NavigationSplitView {
-            sidebarContent
-        } detail: {
-            detailStack
-        }
-        .navigationSplitViewStyle(.balanced)
-        .tint(FaroPalette.purpleDeep)
-        #else
         TabView(selection: $section) {
             NavigationStack {
                 IntakeChoiceView()
@@ -102,53 +90,6 @@ struct FaroRootView: View {
             .tag(FaroSection.settings)
         }
         .tint(FaroPalette.purpleDeep)
-        #endif
-    }
-
-    // MARK: - macOS Sidebar
-
-    #if os(macOS)
-    private var sidebarContent: some View {
-        List(selection: $section) {
-            Section {
-                Label(FaroSection.analyze.title, systemImage: FaroSection.analyze.systemImage)
-                    .tag(FaroSection.analyze)
-            }
-
-            Section("Analysis") {
-                ForEach(FaroSection.analysisSections) { sec in
-                    Label(sec.title, systemImage: sec.systemImage)
-                        .tag(sec)
-                }
-            }
-
-            Section {
-                Label(FaroSection.settings.title, systemImage: FaroSection.settings.systemImage)
-                    .tag(FaroSection.settings)
-            }
-        }
-        .navigationTitle("Faro")
-        .listStyle(.sidebar)
-        .frame(minWidth: 220, idealWidth: 240)
-    }
-    #endif
-
-    // MARK: - Detail
-
-    @ViewBuilder
-    private var detailStack: some View {
-        switch section {
-        case .analyze:
-            NavigationStack { IntakeChoiceView() }
-        case .coverage:
-            NavigationStack { coverageRoot }
-        case .riskProfile:
-            NavigationStack { riskProfileRoot }
-        case .submission:
-            NavigationStack { submissionRoot }
-        case .settings:
-            NavigationStack { FaroSettingsView() }
-        }
     }
 
     // MARK: - Section Roots
