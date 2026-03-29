@@ -4,7 +4,6 @@ import UIKit
 #endif
 
 enum FaroSection: String, CaseIterable, Identifiable, Hashable {
-    case home
     case coverage
     case riskProfile
     case submission
@@ -14,7 +13,6 @@ enum FaroSection: String, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .home:       return "Home"
         case .coverage:   return "Coverage"
         case .riskProfile: return "Risk Profile"
         case .submission: return "Submission"
@@ -24,7 +22,6 @@ enum FaroSection: String, CaseIterable, Identifiable, Hashable {
 
     var systemImage: String {
         switch self {
-        case .home:       return "house.fill"
         case .coverage:   return "shield.checkered"
         case .riskProfile: return "exclamationmark.triangle.fill"
         case .submission: return "doc.text.fill"
@@ -36,7 +33,7 @@ enum FaroSection: String, CaseIterable, Identifiable, Hashable {
 struct FaroRootView: View {
     @EnvironmentObject private var appState: FaroAppState
     @EnvironmentObject private var authManager: AuthManager
-    @State private var section: FaroSection = .home
+    @State private var section: FaroSection = .coverage
     @Environment(\.horizontalSizeClass) private var hSizeClass
 
     private var isIPad: Bool { hSizeClass == .regular }
@@ -126,9 +123,6 @@ struct FaroRootView: View {
     @available(iOS 18.0, *)
     private var iPadAdaptiveTabView: some View {
         TabView(selection: $section) {
-            Tab(FaroSection.home.title,       systemImage: FaroSection.home.systemImage,       value: FaroSection.home) {
-                NavigationStack { HomeView(selectedSection: $section) }
-            }
             Tab(FaroSection.coverage.title,   systemImage: FaroSection.coverage.systemImage,   value: FaroSection.coverage) {
                 NavigationStack { coverageRoot }
             }
@@ -139,7 +133,7 @@ struct FaroRootView: View {
                 NavigationStack { submissionRoot }
             }
             Tab(FaroSection.profile.title,    systemImage: FaroSection.profile.systemImage,    value: FaroSection.profile) {
-                NavigationStack { FaroSettingsView() }
+                NavigationStack { FaroSettingsView(selectedSection: $section) }
             }
         }
         .tabViewStyle(.sidebarAdaptable)
@@ -150,10 +144,6 @@ struct FaroRootView: View {
 
     private var legacyTabView: some View {
         TabView(selection: $section) {
-            NavigationStack { HomeView(selectedSection: $section) }
-                .tabItem { Label(FaroSection.home.title,        systemImage: FaroSection.home.systemImage) }
-                .tag(FaroSection.home)
-
             NavigationStack { coverageRoot }
                 .tabItem { Label(FaroSection.coverage.title,    systemImage: FaroSection.coverage.systemImage) }
                 .tag(FaroSection.coverage)
@@ -166,7 +156,7 @@ struct FaroRootView: View {
                 .tabItem { Label(FaroSection.submission.title,  systemImage: FaroSection.submission.systemImage) }
                 .tag(FaroSection.submission)
 
-            NavigationStack { FaroSettingsView() }
+            NavigationStack { FaroSettingsView(selectedSection: $section) }
                 .tabItem { Label(FaroSection.profile.title,     systemImage: FaroSection.profile.systemImage) }
                 .tag(FaroSection.profile)
         }
@@ -182,9 +172,9 @@ struct FaroRootView: View {
         } else {
             AnalysisPlaceholderView(
                 title: "No coverage analysis yet",
-                message: "Run an analysis from the Home tab to see your coverage recommendations, charts, and premium estimates.",
+                message: "Run an analysis from Profile → Get Started to see your coverage recommendations, charts, and premium estimates.",
                 icon: "shield.lefthalf.filled"
-            ) { section = .home }
+            ) { section = .profile }
         }
     }
 
@@ -197,7 +187,7 @@ struct FaroRootView: View {
                 title: "No risk profile yet",
                 message: "After analyzing your business, the AI risk assessment with exposures, state requirements, and risk level will appear here.",
                 icon: "exclamationmark.triangle"
-            ) { section = .home }
+            ) { section = .profile }
         }
     }
 
@@ -210,17 +200,17 @@ struct FaroRootView: View {
                 title: "No submission packet yet",
                 message: "The carrier-ready submission document will be generated after your analysis completes.",
                 icon: "doc.text"
-            ) { section = .home }
+            ) { section = .profile }
         }
     }
 }
 
 private extension FaroRootView {
     func syncSectionFromAppState(_ rawValue: String) {
-        // Migrate legacy raw values (analyze → home, settings → profile)
+        // Migrate legacy raw values (analyze / home → profile, settings → profile)
         let mapped: String
         switch rawValue {
-        case "analyze": mapped = "home"
+        case "analyze", "home": mapped = "profile"
         case "settings": mapped = "profile"
         default: mapped = rawValue
         }
@@ -623,7 +613,7 @@ struct AnalysisPlaceholderView: View {
             Text(message)
                 .multilineTextAlignment(.center)
         } actions: {
-            Button("Go to Home", action: action)
+            Button("Go to Profile", action: action)
                 .buttonStyle(.borderedProminent)
                 .tint(FaroPalette.purpleDeep)
         }

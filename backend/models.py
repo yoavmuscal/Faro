@@ -995,3 +995,11 @@ def build_results_response(
         plain_english_summary=_clean_string(plain_english_summary),
         next_renewal_days=None,
     )
+
+
+class CoverageChatRequest(FaroBaseModel):
+    message: str = Field(..., min_length=1, max_length=8000)
+
+
+class CoverageChatResponse(FaroBaseModel):
+    reply: str

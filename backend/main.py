@@ -30,6 +30,8 @@ from models import (
     normalize_coverage_requirements_payload,
     normalize_risk_profile_payload,
     normalize_submission_packet_payload,
+    CoverageChatRequest,
+    CoverageChatResponse,
 )
 import database as db
 from agent.pipeline import run_pipeline
@@ -37,6 +39,7 @@ from agent.pipeline import run_pipeline
 logger = logging.getLogger(__name__)
 
 import agent.elevenlabs_conversation as elevenlabs_conv
+from agent.llm import chat_with_fallback
 
 
 @asynccontextmanager
@@ -371,6 +374,64 @@ async def get_results(session_id: str):
         )
     except Exception as exc:
         raise HTTPException(500, f"Stored results are malformed: {exc}") from exc
+
+
+# ── POST /results/{session_id}/chat ───────────────────────────────────────────
+
+@app.post("/results/{session_id}/chat", response_model=CoverageChatResponse, dependencies=_api_auth)
+async def coverage_chat(session_id: str, body: CoverageChatRequest):
+    """
+    Ask follow-up questions about a completed analysis (plain-text LLM reply).
+    """
+    session = await db.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    if session.get("pipeline_status") != "complete":
+        raise HTTPException(400, "Analysis is not complete yet")
+
+    intake = session.get("intake") or {}
+    summary = (session.get("plain_english_summary") or "")[:6000]
+    risk_raw = session.get("risk_profile")
+    cov_raw = session.get("coverage_requirements") or []
+
+    lines: list[str] = []
+    for item in cov_raw[:50]:
+        if not isinstance(item, dict):
+            continue
+        t = item.get("type") or ""
+        lo = item.get("estimated_premium_low")
+        hi = item.get("estimated_premium_high")
+        cat = item.get("category")
+        lines.append(f"- {t} ({cat}): ${lo}–${hi}")
+
+    risk_blob = ""
+    if risk_raw is not None:
+        try:
+            risk_blob = json.dumps(risk_raw, default=str)[:8000]
+        except (TypeError, ValueError):
+            risk_blob = str(risk_raw)[:8000]
+
+    system = f"""You are Faro, a concise insurance assistant. You are helping a user who already ran a coverage analysis for their business.
+Use only the session context below. If they ask something unrelated or you lack data, say so briefly.
+Intake (JSON): {json.dumps(intake, default=str)[:4000]}
+Plain-English summary: {summary}
+Risk profile (JSON): {risk_blob}
+Coverage lines:
+{chr(10).join(lines)}
+
+Reply in plain English. Keep answers short unless the user asks for detail."""
+
+    user_msg = body.message.strip()
+    try:
+        reply = await chat_with_fallback(system, user_msg)
+    except Exception as exc:
+        logger.exception("coverage_chat failed")
+        raise HTTPException(500, f"Assistant could not respond: {exc}") from exc
+
+    reply = (reply or "").strip()
+    if not reply:
+        reply = "I couldn’t generate a reply. Please try again."
+    return CoverageChatResponse(reply=reply)
 
 
 # ── GET /status/{session_id} ──────────────────────────────────────────────────

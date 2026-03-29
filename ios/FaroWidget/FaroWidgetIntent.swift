@@ -11,7 +11,7 @@ enum FaroWidgetTapDestination: String, AppEnum {
 
     static var caseDisplayRepresentations: [FaroWidgetTapDestination: DisplayRepresentation] = [
         .matchSnapshot: "Match snapshot",
-        .analyze: "Home / Analyze",
+        .analyze: "Profile / Analyze",
         .coverage: "Coverage",
         .submission: "Submission"
     ]

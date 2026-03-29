@@ -5,17 +5,21 @@ struct AgentTrackerView: View {
     @EnvironmentObject private var authManager: AuthManager
     let sessionId: String
     let businessName: String
+    /// Called after results are fetched and saved — clear navigation `sessionId` and dismiss parent flows.
+    var onAnalysisFinished: (() -> Void)?
 
     @StateObject private var ws: WebSocketService
     @State private var isLoadingResults = false
     @State private var errorMessage: String?
     @State private var widgetUpdateTask: Task<Void, Never>?
+    @State private var didTriggerAutoFetch = false
 
     private let allSteps: [AgentStep] = [.riskProfiler, .coverageMapper, .submissionBuilder, .explainer]
 
-    init(sessionId: String, businessName: String = "Business") {
+    init(sessionId: String, businessName: String = "Business", onAnalysisFinished: (() -> Void)? = nil) {
         self.sessionId = sessionId
         self.businessName = businessName
+        self.onAnalysisFinished = onAnalysisFinished
         _ws = StateObject(wrappedValue: WebSocketService(sessionId: sessionId))
     }
 
@@ -39,6 +43,10 @@ struct AgentTrackerView: View {
         }.joined(separator: "|")
     }
 
+    private var processingActive: Bool {
+        !isComplete && !hasError
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: FaroSpacing.sm) {
@@ -49,10 +57,20 @@ struct AgentTrackerView: View {
                     .font(FaroType.subheadline())
                     .foregroundStyle(FaroPalette.ink.opacity(0.55))
 
+                if !isComplete {
+                    AnalysisProcessingHero(
+                        isAnimating: processingActive,
+                        completedFraction: Double(completedCount) / Double(max(allSteps.count, 1))
+                    )
+                    .padding(.top, FaroSpacing.sm)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
                 ProgressView(value: Double(completedCount), total: Double(allSteps.count))
                     .tint(hasError ? FaroPalette.danger : FaroPalette.purpleDeep)
                     .padding(.top, FaroSpacing.xs)
             }
+            .animation(.easeInOut(duration: 0.35), value: isComplete)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(FaroSpacing.md)
 
@@ -151,6 +169,9 @@ struct AgentTrackerView: View {
                 headline: "Analysis complete",
                 message: "Tap to view coverage options"
             )
+            guard !didTriggerAutoFetch else { return }
+            didTriggerAutoFetch = true
+            Task { await loadResults() }
         }
     }
 
@@ -192,7 +213,7 @@ struct AgentTrackerView: View {
         do {
             let fetched = try await APIService.shared.fetchResults(sessionId: sessionId)
             appState.completeAnalysis(results: fetched)
-            // Tab switches to Coverage via completeAnalysis — do not push CoverageDashboardView here.
+            onAnalysisFinished?()
         } catch let error as APIError {
             errorMessage = error.message
         } catch {
@@ -202,11 +223,228 @@ struct AgentTrackerView: View {
     }
 }
 
+// MARK: - Analysis hero (data-stream visualization)
+
+private struct AnalysisProcessingHero: View {
+    var isAnimating: Bool
+    var completedFraction: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+            HStack(spacing: FaroSpacing.xs) {
+                LivePulseDot(isActive: isAnimating)
+                Text("Processing intake signals")
+                    .font(FaroType.caption(.semibold))
+                    .foregroundStyle(FaroPalette.ink.opacity(0.72))
+                Spacer(minLength: 0)
+                Text("\(Int(round(completedFraction * 100)))%")
+                    .font(FaroType.caption(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(FaroPalette.purpleDeep.opacity(0.85))
+            }
+
+            ZStack(alignment: .bottom) {
+                DataStreamSpectrum(isActive: isAnimating)
+                    .frame(height: 104)
+                    .clipShape(RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous))
+
+                LinearGradient(
+                    colors: [
+                        FaroPalette.background.opacity(0.0),
+                        FaroPalette.background.opacity(0.55),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 36)
+                .allowsHitTesting(false)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                FaroPalette.info.opacity(0.22),
+                                FaroPalette.purple.opacity(0.12),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        lineWidth: 0.75
+                    )
+            }
+            .background {
+                RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                    .fill(FaroPalette.surface.opacity(0.4))
+            }
+
+            Text("Synthesizing structured coverage insights from your answers — not a canned template.")
+                .font(FaroType.caption2())
+                .foregroundStyle(FaroPalette.ink.opacity(0.42))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Analysis in progress")
+        .accessibilityHint(isAnimating ? "Animated visualization of live data processing" : "")
+    }
+}
+
+private struct LivePulseDot: View {
+    var isActive: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let ripplePeriod: TimeInterval = 1.35
+
+    var body: some View {
+        ZStack {
+            if isActive && !reduceMotion {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isActive || reduceMotion)) { timeline in
+                    let t = timeline.date.timeIntervalSinceReferenceDate
+                    let phase = (t.truncatingRemainder(dividingBy: ripplePeriod)) / ripplePeriod
+                    let eased = 1 - pow(1 - phase, 2)
+                    Circle()
+                        .fill(FaroPalette.success.opacity(0.38))
+                        .frame(width: 10, height: 10)
+                        .scaleEffect(1 + eased * 1.55)
+                        .opacity(1 - eased)
+                }
+            }
+            Circle()
+                .fill(FaroPalette.success)
+                .frame(width: 7, height: 7)
+                .shadow(color: FaroPalette.success.opacity(0.45), radius: 3, y: 0)
+        }
+        .frame(width: 14, height: 14)
+    }
+}
+
+private struct DataStreamSpectrum: View {
+    var isActive: Bool
+    private let barCount = 32
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if reduceMotion {
+            staticSpectrumPlaceholder
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !isActive)) { timeline in
+                spectrumContent(time: timeline.date.timeIntervalSinceReferenceDate)
+            }
+        }
+    }
+
+    private var staticSpectrumPlaceholder: some View {
+        HStack(alignment: .bottom, spacing: 3) {
+            ForEach(0..<barCount, id: \.self) { i in
+                let h = 0.35 + 0.45 * sin(Double(i) * 0.42 + 1.2)
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(barGradient(opacity: 0.55))
+                    .frame(height: CGFloat(h) * 88 + 8)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
+    }
+
+    private func spectrumContent(time t: TimeInterval) -> some View {
+        GeometryReader { geo in
+            let usableW = max(geo.size.width - 20, 40)
+            let gap: CGFloat = 3
+            let n = CGFloat(barCount)
+            let barW = max(2, (usableW - gap * (n - 1)) / n)
+            HStack(alignment: .bottom, spacing: gap) {
+                ForEach(0..<barCount, id: \.self) { i in
+                    let x = Double(i)
+                    let wave1 = sin(x * 0.38 + t * 2.15)
+                    let wave2 = sin(x * 0.62 - t * 1.72)
+                    let wave3 = sin(x * 0.21 + t * 3.1 + 0.7)
+                    let mix = (wave1 * 0.45 + wave2 * 0.35 + wave3 * 0.2)
+                    let norm = (mix + 1) / 2
+                    let h = max(6, norm * Double(geo.size.height - 10) * 0.92 + 4)
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(barGradient(opacity: 0.45 + norm * 0.45))
+                        .frame(width: barW, height: CGFloat(h))
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
+            .padding(.horizontal, 10)
+            .padding(.bottom, 6)
+        }
+    }
+
+    private func barGradient(opacity: Double) -> LinearGradient {
+        LinearGradient(
+            colors: [
+                FaroPalette.info.opacity(opacity * 0.95),
+                FaroPalette.purpleDeep.opacity(opacity * 0.75),
+            ],
+            startPoint: .bottom,
+            endPoint: .top
+        )
+    }
+}
+
+private struct RunningStepGlyph: View {
+    var reduceMotion: Bool
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(FaroPalette.info.opacity(0.1))
+                .frame(width: 46, height: 46)
+
+            if reduceMotion {
+                ProgressView()
+                    .scaleEffect(0.78)
+                    .tint(FaroPalette.info)
+            } else {
+                Circle()
+                    .stroke(FaroPalette.info.opacity(0.32), lineWidth: 1.5)
+                    .frame(width: 46, height: 46)
+                    .phaseAnimator([false, true]) { content, phase in
+                        content
+                            .scaleEffect(phase ? 1.52 : 1)
+                            .opacity(phase ? 0 : 0.95)
+                    } animation: { _ in
+                        .easeOut(duration: 1.2).repeatForever(autoreverses: false)
+                    }
+
+                Circle()
+                    .stroke(FaroPalette.purpleDeep.opacity(0.2), lineWidth: 1)
+                    .frame(width: 46, height: 46)
+                    .phaseAnimator([false, true]) { content, phase in
+                        content
+                            .scaleEffect(phase ? 1.78 : 1)
+                            .opacity(phase ? 0 : 0.6)
+                    } animation: { _ in
+                        .easeOut(duration: 1.5).repeatForever(autoreverses: false)
+                    }
+
+                Image(systemName: "sparkles")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [FaroPalette.info, FaroPalette.purpleDeep],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .symbolEffect(.variableColor.iterative, options: .repeating, isActive: true)
+            }
+        }
+        .frame(width: 46, height: 46)
+    }
+}
+
 // MARK: - Step Card
 
 struct StepCard: View {
     let step: AgentStep
     let update: StepUpdate?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var stepTitle: String {
         switch step {
@@ -243,20 +481,7 @@ struct StepCard: View {
                     .frame(width: 46, height: 46)
 
                 if update?.status == .running {
-                    Circle()
-                        .fill(FaroPalette.info.opacity(0.08))
-                        .frame(width: 46, height: 46)
-                        .phaseAnimator([false, true]) { content, phase in
-                            content.overlay {
-                                Circle()
-                                    .stroke(FaroPalette.info.opacity(phase ? 0 : 0.35), lineWidth: 2)
-                                    .scaleEffect(phase ? 1.6 : 1)
-                            }
-                        } animation: { _ in .easeOut(duration: 1.4) }
-
-                    ProgressView()
-                        .scaleEffect(0.7)
-                        .tint(FaroPalette.info)
+                    RunningStepGlyph(reduceMotion: reduceMotion)
                 } else if update?.status == .error {
                     Image(systemName: "xmark")
                         .font(.system(size: 16, weight: .semibold))
@@ -287,7 +512,7 @@ struct StepCard: View {
                         .font(FaroType.caption())
                         .foregroundStyle(FaroPalette.ink.opacity(0.35))
                 } else if update?.status == .running {
-                    Text("Processing...")
+                    Text("Reasoning with your inputs…")
                         .font(FaroType.caption())
                         .foregroundStyle(FaroPalette.info)
                 }

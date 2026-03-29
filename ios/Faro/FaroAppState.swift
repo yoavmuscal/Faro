@@ -1,8 +1,18 @@
+import Foundation
 import SwiftUI
 
 @MainActor
 final class FaroAppState: ObservableObject {
     private static let defaults = UserDefaults.standard
+
+    private enum AnalysisKeys {
+        static let sessionId = "faro_sessionId"
+        static let businessName = "faro_businessName"
+        static let contactFirst = "faro_contactFirstName"
+        static let contactMiddle = "faro_contactMiddleName"
+        static let contactLast = "faro_contactLastName"
+        static let resultsJSON = "faro_resultsPayload"
+    }
 
     @Published var userFirstName: String {
         didSet { Self.defaults.set(userFirstName, forKey: "faro_userFirstName") }
@@ -43,7 +53,7 @@ final class FaroAppState: ObservableObject {
     @Published var contactMiddleName: String = ""
     @Published var contactLastName: String = ""
     @Published var results: ResultsResponse?
-    @Published var selectedSectionRawValue: String = "home"
+    @Published var selectedSectionRawValue: String = "coverage"
 
     /// Bumps on ``signOut()`` so ``WelcomeView`` can remount with fresh `@State` (name fields empty).
     @Published private(set) var onboardingFlowResetCount: Int = 0
@@ -90,6 +100,37 @@ final class FaroAppState: ObservableObject {
         hasCompletedPostAuth0Profile = Self.defaults.bool(forKey: "faro_completedPostAuth0Profile")
         hasSubmittedNameBeforeAuth0 = Self.defaults.bool(forKey: "faro_submittedNameBeforeAuth0")
         userProfilePhotoData = Self.defaults.data(forKey: "faro_profilePhoto")
+        loadPersistedAnalysisState()
+    }
+
+    /// Restores last analysis session and results across app launches.
+    private func loadPersistedAnalysisState() {
+        sessionId = Self.defaults.string(forKey: AnalysisKeys.sessionId)
+        businessName = Self.defaults.string(forKey: AnalysisKeys.businessName) ?? ""
+        contactFirstName = Self.defaults.string(forKey: AnalysisKeys.contactFirst) ?? ""
+        contactMiddleName = Self.defaults.string(forKey: AnalysisKeys.contactMiddle) ?? ""
+        contactLastName = Self.defaults.string(forKey: AnalysisKeys.contactLast) ?? ""
+        if let data = Self.defaults.data(forKey: AnalysisKeys.resultsJSON),
+           let decoded = try? JSONDecoder().decode(ResultsResponse.self, from: data) {
+            results = decoded
+        }
+    }
+
+    private func saveAnalysisPersistence() {
+        if let sid = sessionId {
+            Self.defaults.set(sid, forKey: AnalysisKeys.sessionId)
+        } else {
+            Self.defaults.removeObject(forKey: AnalysisKeys.sessionId)
+        }
+        Self.defaults.set(businessName, forKey: AnalysisKeys.businessName)
+        Self.defaults.set(contactFirstName, forKey: AnalysisKeys.contactFirst)
+        Self.defaults.set(contactMiddleName, forKey: AnalysisKeys.contactMiddle)
+        Self.defaults.set(contactLastName, forKey: AnalysisKeys.contactLast)
+        if let results, let data = try? JSONEncoder().encode(results) {
+            Self.defaults.set(data, forKey: AnalysisKeys.resultsJSON)
+        } else {
+            Self.defaults.removeObject(forKey: AnalysisKeys.resultsJSON)
+        }
     }
 
     /// Full sign-in without Auth0 (or when Auth0 is optional). When Auth0 is required, use ``saveNameBeforeAuth0`` + Auth0 + ``completeSignInAfterAuth0()`` instead.
@@ -144,7 +185,8 @@ final class FaroAppState: ObservableObject {
         contactMiddleName = ""
         contactLastName = ""
         results = nil
-        selectedSectionRawValue = "home"
+        selectedSectionRawValue = "coverage"
+        saveAnalysisPersistence()
         WidgetDataWriter.clear()
     }
 
@@ -152,13 +194,15 @@ final class FaroAppState: ObservableObject {
         self.sessionId = sessionId
         self.businessName = businessName
         self.results = nil
-        self.selectedSectionRawValue = "home"
+        self.selectedSectionRawValue = "profile"
+        saveAnalysisPersistence()
         WidgetDataWriter.beginAnalysis(businessName: businessName)
     }
 
     func completeAnalysis(results: ResultsResponse) {
         self.results = results
         self.selectedSectionRawValue = "coverage"
+        saveAnalysisPersistence()
         WidgetDataWriter.update(from: results, businessName: businessName)
     }
 
@@ -168,7 +212,7 @@ final class FaroAppState: ObservableObject {
         case "summary", "coverage":
             selectedSectionRawValue = "coverage"
         case "analyze", "home":
-            selectedSectionRawValue = "home"
+            selectedSectionRawValue = "profile"
         case "settings", "profile":
             selectedSectionRawValue = "profile"
         default:

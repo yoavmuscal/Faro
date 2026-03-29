@@ -187,6 +187,16 @@ struct ResultsResponse: Codable {
     }
 }
 
+// MARK: - Coverage chat (post-results Q&A)
+
+struct CoverageChatRequest: Codable {
+    let message: String
+}
+
+struct CoverageChatResponse: Codable {
+    let reply: String
+}
+
 // MARK: - Risk Profile
 
 struct RiskProfile: Codable {

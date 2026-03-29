@@ -234,6 +234,7 @@ final class OnboardingViewModel: ObservableObject {
 
 struct OnboardingView: View {
     @EnvironmentObject private var appState: FaroAppState
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var vm = OnboardingViewModel()
     @State private var appeared = false
     /// Lifts the state step above the footer while the autocomplete panel is open.
@@ -286,7 +287,10 @@ struct OnboardingView: View {
             }
         }
         .navigationDestination(item: $vm.sessionId) { sessionId in
-            AgentTrackerView(sessionId: sessionId, businessName: vm.businessName)
+            AgentTrackerView(sessionId: sessionId, businessName: vm.businessName) {
+                vm.sessionId = nil
+                dismiss()
+            }
         }
         .onChange(of: vm.sessionId) { _, newId in
             if let id = newId {

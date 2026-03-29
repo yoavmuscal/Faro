@@ -53,7 +53,7 @@ enum APIConfig {
         isAuth0Configured || auth0MissingClientIdOnly
     }
 
-    /// When `false`, users can use the app after the name screen without signing in; Auth0 remains optional in Settings / Home.
+    /// When `false`, users can use the app after the name screen without signing in; Auth0 remains optional in Settings / Profile.
     static var isAuth0Required: Bool { false }
 
     /// Shown in-app as a hint; must match Allowed Callback / Logout URLs in Auth0 for this Native app.

@@ -53,6 +53,8 @@
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Faro needs microphone access to talk with the conversational intake agent.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Faro uses speech recognition so you can dictate follow-up questions about your coverage analysis.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

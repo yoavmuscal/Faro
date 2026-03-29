@@ -27,7 +27,6 @@
 		B00000000000000000000000F /* FaroAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000011 /* FaroAppState.swift */; };
 		B000000000000000000000010 /* FaroRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000012 /* FaroRootView.swift */; };
 		B000000000000000000000011 /* FaroSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000013 /* FaroSettingsView.swift */; };
-		B0000000000000000000001A /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001A /* HomeView.swift */; };
 		B000000000000000000000012 /* RiskProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000014 /* RiskProfileView.swift */; };
 		B000000000000000000000013 /* SubmissionPacketView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000015 /* SubmissionPacketView.swift */; };
 		B000000000000000000000014 /* SummaryPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000016 /* SummaryPlayerView.swift */; };
@@ -40,6 +39,7 @@
 		A90000000000000000000003 /* Auth0 in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* Auth0 */; };
 		A90000000000000000000004 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90000000000000000000006 /* AuthManager.swift */; };
 		B000000000000000000000019 /* FaroAuth0SessionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000019 /* FaroAuth0SessionCard.swift */; };
+		B00000000000000000000001C /* CoverageChatSpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001B /* CoverageChatSpeechTranscriber.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -89,7 +89,6 @@
 		A000000000000000000000011 /* FaroAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroAppState.swift; sourceTree = "<group>"; };
 		A000000000000000000000012 /* FaroRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroRootView.swift; sourceTree = "<group>"; };
 		A000000000000000000000013 /* FaroSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroSettingsView.swift; sourceTree = "<group>"; };
-		A0000000000000000000001A /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		A000000000000000000000014 /* RiskProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RiskProfileView.swift; sourceTree = "<group>"; };
 		A000000000000000000000015 /* SubmissionPacketView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubmissionPacketView.swift; sourceTree = "<group>"; };
 		A000000000000000000000016 /* SummaryPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryPlayerView.swift; sourceTree = "<group>"; };
@@ -105,6 +104,7 @@
 		F10000000000000000000016 /* FaroWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FaroWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A90000000000000000000006 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		A000000000000000000000019 /* FaroAuth0SessionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaroAuth0SessionCard.swift; sourceTree = "<group>"; };
+		A00000000000000000000001B /* CoverageChatSpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageChatSpeechTranscriber.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -170,6 +170,7 @@
 				A000000000000000000000005 /* APIConfig.swift */,
 				A90000000000000000000006 /* AuthManager.swift */,
 				8B5856D523D28CCEAA01A4A5 /* ElevenLabsConvService.swift */,
+				A00000000000000000000001B /* CoverageChatSpeechTranscriber.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -178,7 +179,6 @@
 			isa = PBXGroup;
 			children = (
 				A000000000000000000000012 /* FaroRootView.swift */,
-				A0000000000000000000001A /* HomeView.swift */,
 				A000000000000000000000006 /* OnboardingView.swift */,
 				A000000000000000000000007 /* AgentTrackerView.swift */,
 				A000000000000000000000008 /* CoverageDashboardView.swift */,
@@ -365,7 +365,6 @@
 				B00000000000000000000000F /* FaroAppState.swift in Sources */,
 				B000000000000000000000010 /* FaroRootView.swift in Sources */,
 				B000000000000000000000011 /* FaroSettingsView.swift in Sources */,
-				B0000000000000000000001A /* HomeView.swift in Sources */,
 				B000000000000000000000012 /* RiskProfileView.swift in Sources */,
 				B000000000000000000000013 /* SubmissionPacketView.swift in Sources */,
 				B000000000000000000000014 /* SummaryPlayerView.swift in Sources */,
@@ -374,6 +373,7 @@
 				118A2A870EA2E089E7C31A73 /* VoiceIntakeView.swift in Sources */,
 				A90000000000000000000004 /* AuthManager.swift in Sources */,
 				B000000000000000000000019 /* FaroAuth0SessionCard.swift in Sources */,
+				B00000000000000000000001C /* CoverageChatSpeechTranscriber.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

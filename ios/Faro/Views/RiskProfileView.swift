@@ -1,11 +1,38 @@
 import SwiftUI
-import Charts
 
 struct RiskProfileView: View {
     let riskProfile: RiskProfile
     let businessName: String
 
     @State private var gaugeProgress: Double = 0
+    @State private var pageAppeared = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isWideLayout: Bool { horizontalSizeClass == .regular }
+    private var horizontalPagePadding: CGFloat { isWideLayout ? FaroSpacing.xl + 8 : FaroSpacing.md + 4 }
+    private var insightGridColumns: [GridItem] {
+        if isWideLayout {
+            [
+                GridItem(.flexible(), spacing: FaroSpacing.lg, alignment: .topLeading),
+                GridItem(.flexible(), spacing: FaroSpacing.lg, alignment: .topLeading),
+            ]
+        } else {
+            [GridItem(.flexible(), alignment: .topLeading)]
+        }
+    }
+
+    private var cardInnerPadding: CGFloat { FaroSpacing.xl }
+
+    private var timeBasedGreeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 5..<12: return "Good morning"
+        case 12..<17: return "Good afternoon"
+        case 17..<22: return "Good evening"
+        default: return "Hello"
+        }
+    }
 
     private var riskLevelNormalized: Double {
         switch riskProfile.riskLevel?.lowercased() {
@@ -25,32 +52,38 @@ struct RiskProfileView: View {
         }
     }
 
+    private var displayTitle: String {
+        let n = businessName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return n.isEmpty ? "Your risk profile" : n
+    }
+
     var body: some View {
         ScrollView {
-            VStack(spacing: FaroSpacing.lg) {
-                headerSection
+            VStack(spacing: isWideLayout ? FaroSpacing.xl : FaroSpacing.lg) {
+                dashboardHero
+                    .opacity(pageAppeared ? 1 : 0)
+                    .offset(y: pageAppeared ? 0 : 14)
+
+                metricStrip
+                    .opacity(pageAppeared ? 1 : 0)
+                    .offset(y: pageAppeared ? 0 : 18)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.04), value: pageAppeared)
 
                 riskGaugeSection
+                    .opacity(pageAppeared ? 1 : 0)
+                    .offset(y: pageAppeared ? 0 : 20)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.08), value: pageAppeared)
 
-                if let exposures = riskProfile.primaryExposures, !exposures.isEmpty {
-                    exposuresSection(exposures)
-                }
-                if let stateReqs = riskProfile.stateRequirements, !stateReqs.isEmpty {
-                    stateRequirementsSection(stateReqs)
-                }
-                if let empImplications = riskProfile.employeeImplications, !empImplications.isEmpty {
-                    employeeSection(empImplications)
-                }
-                if let unusualRisks = riskProfile.unusualRisks, !unusualRisks.isEmpty {
-                    unusualRisksSection(unusualRisks)
-                }
-                if let summary = riskProfile.reasoningSummary, !summary.isEmpty {
-                    summarySection(summary)
-                }
+                insightGallery
+                    .opacity(pageAppeared ? 1 : 0)
+                    .offset(y: pageAppeared ? 0 : 12)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.1), value: pageAppeared)
 
                 Spacer(minLength: 40)
             }
-            .padding(.top, FaroSpacing.md)
+            .padding(.top, isWideLayout ? FaroSpacing.lg : FaroSpacing.md)
+            .padding(.bottom, FaroSpacing.xl)
+            .padding(.horizontal, horizontalPagePadding)
         }
         .faroCanvasBackground()
         .navigationTitle("Risk Profile")
@@ -59,186 +92,310 @@ struct RiskProfileView: View {
         #endif
         .onAppear {
             gaugeProgress = riskLevelNormalized
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.84)) {
+                pageAppeared = true
+            }
         }
     }
 
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.xs) {
-            Text("Risk Assessment")
-                .font(FaroType.title())
-                .foregroundStyle(FaroPalette.ink)
+    // MARK: - Hero & metrics
 
-            HStack(spacing: FaroSpacing.sm) {
-                if let industry = riskProfile.industry {
-                    TagPill(text: industry, icon: "building.2.fill", tint: FaroPalette.purpleDeep)
+    private var dashboardHero: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+            Text(timeBasedGreeting)
+                .font(FaroType.subheadline(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.45))
+
+            HStack(alignment: .firstTextBaseline, spacing: FaroSpacing.sm) {
+                Capsule()
+                    .fill(
+                        colorScheme == .dark
+                            ? AnyShapeStyle(FaroPalette.purpleDeep.opacity(0.85))
+                            : AnyShapeStyle(
+                                LinearGradient(
+                                    colors: [FaroPalette.purpleDeep, FaroPalette.purple],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                    )
+                    .frame(width: 36, height: 5)
+                Text("Assessment")
+                    .font(FaroType.caption(.semibold))
+                    .foregroundStyle(FaroPalette.purpleDeep.opacity(0.85))
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+            }
+
+            Text(displayTitle)
+                .font(isWideLayout ? FaroType.largeTitle() : FaroType.title())
+                .foregroundStyle(FaroPalette.ink)
+                .multilineTextAlignment(.leading)
+
+            Text("See where loss can show up, what your state expects, and how staffing and operations affect exposure—all in plain language.")
+                .font(isWideLayout ? FaroType.body() : FaroType.subheadline())
+                .foregroundStyle(FaroPalette.ink.opacity(0.52))
+                .frame(maxWidth: isWideLayout ? 640 : .infinity, alignment: .leading)
+                .lineSpacing(3)
+
+            tagBadgesRow
+                .padding(.top, FaroSpacing.xs)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var tagBadgesRow: some View {
+        Group {
+            if isWideLayout {
+                HStack(spacing: FaroSpacing.sm) {
+                    if let industry = riskProfile.industry {
+                        TagPill(text: industry, icon: "building.2.fill", tint: FaroPalette.purpleDeep, expandToFillWidth: true)
+                    }
+                    if let sic = riskProfile.sicCode {
+                        TagPill(text: "SIC \(sic)", icon: "number", tint: FaroPalette.info, expandToFillWidth: true)
+                    }
                 }
-                if let sic = riskProfile.sicCode {
-                    TagPill(text: "SIC \(sic)", icon: "number", tint: FaroPalette.info)
+            } else {
+                FlowLayout(spacing: FaroSpacing.sm) {
+                    if let industry = riskProfile.industry {
+                        TagPill(text: industry, icon: "building.2.fill", tint: FaroPalette.purpleDeep)
+                    }
+                    if let sic = riskProfile.sicCode {
+                        TagPill(text: "SIC \(sic)", icon: "number", tint: FaroPalette.info)
+                    }
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, FaroSpacing.md)
+    }
+
+    private var metricStrip: some View {
+        Group {
+            if isWideLayout {
+                metricTiles
+                    .frame(maxWidth: .infinity)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    metricTiles
+                        .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private var metricTiles: some View {
+        let tileMinHeight: CGFloat = isWideLayout ? 136 : 0
+        let level = riskProfile.riskLevel?.capitalized ?? "—"
+        let contextValue: String = {
+            if let ind = riskProfile.industry, !ind.isEmpty { return ind }
+            if let sic = riskProfile.sicCode { return "SIC \(sic)" }
+            return "—"
+        }()
+        return HStack(alignment: .top, spacing: FaroSpacing.md) {
+            FaroDashboardMetricTile(
+                title: "Risk level",
+                value: level,
+                subtitle: "How we’re sizing overall risk",
+                icon: "chart.bar.fill",
+                tint: riskLevelColor
+            )
+            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: isWideLayout ? tileMinHeight : nil, alignment: .topLeading)
+            .frame(minWidth: isWideLayout ? 0 : 160)
+
+            FaroDashboardMetricTile(
+                title: "Business context",
+                value: contextValue,
+                subtitle: "Industry & classification",
+                icon: "building.columns.fill",
+                tint: FaroPalette.purpleDeep
+            )
+            .frame(maxWidth: .infinity, minHeight: tileMinHeight, maxHeight: isWideLayout ? tileMinHeight : nil, alignment: .topLeading)
+            .frame(minWidth: isWideLayout ? 0 : 176)
+        }
     }
 
     private var riskGaugeSection: some View {
-        VStack(spacing: FaroSpacing.md) {
+        let gaugeSize: CGFloat = isWideLayout ? 196 : 180
+        return VStack(spacing: FaroSpacing.lg) {
             ZStack {
                 Circle()
                     .trim(from: 0, to: 0.75)
-                    .stroke(FaroPalette.ink.opacity(0.06), style: StrokeStyle(lineWidth: 16, lineCap: .round))
+                    .stroke(FaroPalette.ink.opacity(0.06), style: StrokeStyle(lineWidth: isWideLayout ? 18 : 16, lineCap: .round))
                     .rotationEffect(.degrees(135))
 
                 Circle()
                     .trim(from: 0, to: 0.75 * gaugeProgress)
                     .stroke(
                         riskLevelColor.gradient,
-                        style: StrokeStyle(lineWidth: 16, lineCap: .round)
+                        style: StrokeStyle(lineWidth: isWideLayout ? 18 : 16, lineCap: .round)
                     )
                     .rotationEffect(.degrees(135))
                     .shadow(color: riskLevelColor.opacity(0.3), radius: 8, y: 0)
 
-                VStack(spacing: 4) {
+                VStack(spacing: 6) {
                     Text(riskProfile.riskLevel?.capitalized ?? "Unknown")
-                        .font(FaroType.title2())
+                        .font(isWideLayout ? FaroType.title() : FaroType.title2())
                         .foregroundStyle(riskLevelColor)
-                    Text("Risk Level")
-                        .font(FaroType.caption())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                    Text("Overall risk band")
+                        .font(FaroType.subheadline())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.48))
                 }
             }
-            .frame(width: 170, height: 170)
+            .frame(width: gaugeSize, height: gaugeSize)
 
             if let revenue = riskProfile.revenueExposure, !revenue.isEmpty {
-                HStack(spacing: FaroSpacing.xs) {
-                    Image(systemName: "dollarsign.circle.fill")
-                        .foregroundStyle(FaroPalette.warning)
-                    Text(revenue)
-                        .font(FaroType.subheadline())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.7))
-                }
+                FaroDashboardSnapshotRow(
+                    title: "Revenue & exposure",
+                    value: revenue,
+                    detail: "",
+                    comfortable: true
+                )
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(FaroSpacing.lg)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
-        .padding(.horizontal, FaroSpacing.md)
+        .faroDashboardCardSurface(innerPadding: cardInnerPadding)
+        .overlay { FaroDashboardCardOutline() }
     }
 
-    private func exposuresSection(_ exposures: [String]) -> some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-            SectionHeader(title: "Primary Exposures", icon: "exclamationmark.triangle.fill", tint: FaroPalette.warning)
+    // MARK: - Insight gallery
 
-            VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+    private var insightGallery: some View {
+        LazyVGrid(columns: insightGridColumns, alignment: .leading, spacing: FaroSpacing.lg) {
+            if let exposures = riskProfile.primaryExposures, !exposures.isEmpty {
+                exposuresSection(exposures)
+            }
+            if let stateReqs = riskProfile.stateRequirements, !stateReqs.isEmpty {
+                stateRequirementsSection(stateReqs)
+            }
+            if let empImplications = riskProfile.employeeImplications, !empImplications.isEmpty {
+                employeeSection(empImplications)
+            }
+            if let unusualRisks = riskProfile.unusualRisks, !unusualRisks.isEmpty {
+                unusualRisksSection(unusualRisks)
+            }
+            if let summary = riskProfile.reasoningSummary, !summary.isEmpty {
+                summarySection(summary)
+                    .gridCellColumns(isWideLayout ? 2 : 1)
+            }
+        }
+    }
+
+    // MARK: - Sections
+
+    private func exposuresSection(_ exposures: [String]) -> some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.lg + 4) {
+            FaroDashboardInsightSectionHeader(
+                icon: "exclamationmark.triangle.fill",
+                iconTint: FaroPalette.warning,
+                title: "Primary exposures",
+                subtitle: "Where claims tend to come from for businesses like yours",
+                style: .emphasized
+            )
+
+            VStack(alignment: .leading, spacing: FaroSpacing.md + 2) {
                 ForEach(exposures, id: \.self) { exposure in
-                    HStack(alignment: .top, spacing: FaroSpacing.sm) {
-                        Image(systemName: "shield.slash.fill")
-                            .font(.caption2)
-                            .foregroundStyle(FaroPalette.warning)
-                            .padding(.top, 2)
-                        Text(exposure)
-                            .font(FaroType.subheadline())
-                            .foregroundStyle(FaroPalette.ink)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding(FaroSpacing.sm + 2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .faroGlassCard(cornerRadius: FaroRadius.lg)
+                    riskInsightRow(text: exposure, stripe: FaroPalette.warning)
                 }
             }
         }
-        .padding(FaroSpacing.md)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
-        .padding(.horizontal, FaroSpacing.md)
+        .faroDashboardCardSurface(innerPadding: cardInnerPadding)
     }
 
     private func stateRequirementsSection(_ reqs: [String]) -> some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-            SectionHeader(title: "State Requirements", icon: "building.columns.fill", tint: FaroPalette.info)
+        VStack(alignment: .leading, spacing: FaroSpacing.lg + 4) {
+            FaroDashboardInsightSectionHeader(
+                icon: "building.columns.fill",
+                iconTint: FaroPalette.info,
+                title: "State requirements",
+                subtitle: "Licensing, insurance, and rules that often apply",
+                style: .emphasized
+            )
 
-            ForEach(reqs, id: \.self) { req in
-                HStack(alignment: .top, spacing: FaroSpacing.sm) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(FaroPalette.info)
-                        .font(.caption)
-                        .padding(.top, 2)
-                    Text(req)
-                        .font(FaroType.subheadline())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.8))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: FaroSpacing.md + 2) {
+                ForEach(reqs, id: \.self) { req in
+                    riskInsightRow(text: req, stripe: FaroPalette.info)
                 }
             }
         }
-        .padding(FaroSpacing.md)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
-        .padding(.horizontal, FaroSpacing.md)
+        .faroDashboardCardSurface(innerPadding: cardInnerPadding)
     }
 
     private func employeeSection(_ implications: [String]) -> some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-            SectionHeader(title: "Employee Implications", icon: "person.3.fill", tint: FaroPalette.purpleDeep)
+        VStack(alignment: .leading, spacing: FaroSpacing.lg + 4) {
+            FaroDashboardInsightSectionHeader(
+                icon: "person.3.fill",
+                iconTint: FaroPalette.purpleDeep,
+                title: "Employee implications",
+                subtitle: "Workers’ comp, training, and staffing considerations",
+                style: .emphasized
+            )
 
-            ForEach(implications, id: \.self) { item in
-                HStack(alignment: .top, spacing: FaroSpacing.sm) {
-                    Image(systemName: "person.badge.shield.checkmark.fill")
-                        .foregroundStyle(FaroPalette.purpleDeep)
-                        .font(.caption)
-                        .padding(.top, 2)
-                    Text(item)
-                        .font(FaroType.subheadline())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.8))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: FaroSpacing.md + 2) {
+                ForEach(implications, id: \.self) { item in
+                    riskInsightRow(text: item, stripe: FaroPalette.purpleDeep)
                 }
             }
         }
-        .padding(FaroSpacing.md)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
-        .padding(.horizontal, FaroSpacing.md)
+        .faroDashboardCardSurface(innerPadding: cardInnerPadding)
     }
 
     private func unusualRisksSection(_ risks: [String]) -> some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-            SectionHeader(title: "Unusual Risks", icon: "bolt.trianglebadge.exclamationmark.fill", tint: FaroPalette.danger)
+        VStack(alignment: .leading, spacing: FaroSpacing.lg + 4) {
+            FaroDashboardInsightSectionHeader(
+                icon: "bolt.trianglebadge.exclamationmark.fill",
+                iconTint: FaroPalette.danger,
+                title: "Unusual risks",
+                subtitle: "Factors that stand out from a typical peer",
+                style: .emphasized
+            )
 
-            ForEach(risks, id: \.self) { risk in
-                HStack(alignment: .top, spacing: FaroSpacing.sm) {
-                    Image(systemName: "exclamationmark.octagon.fill")
-                        .foregroundStyle(FaroPalette.danger)
-                        .font(.caption)
-                        .padding(.top, 2)
-                    Text(risk)
-                        .font(FaroType.subheadline())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.8))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: FaroSpacing.md + 2) {
+                ForEach(risks, id: \.self) { risk in
+                    riskInsightRow(text: risk, stripe: FaroPalette.danger)
                 }
             }
         }
-        .padding(FaroSpacing.md)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
-        .padding(.horizontal, FaroSpacing.md)
+        .faroDashboardCardSurface(innerPadding: cardInnerPadding)
     }
 
     private func summarySection(_ summary: String) -> some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-            SectionHeader(title: "AI Reasoning", icon: "brain.fill", tint: FaroPalette.purpleDeep)
+        VStack(alignment: .leading, spacing: FaroSpacing.lg + 4) {
+            FaroDashboardInsightSectionHeader(
+                icon: "brain.fill",
+                iconTint: FaroPalette.purpleDeep,
+                title: "How we put this together",
+                subtitle: "Short explanation of the model’s reasoning",
+                style: .emphasized
+            )
 
             Text(summary)
                 .font(FaroType.body())
-                .foregroundStyle(FaroPalette.ink.opacity(0.75))
+                .foregroundStyle(FaroPalette.ink.opacity(0.82))
                 .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(3)
+                .lineSpacing(6)
         }
-        .padding(FaroSpacing.md)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
-        .padding(.horizontal, FaroSpacing.md)
+        .faroDashboardCardSurface(innerPadding: cardInnerPadding)
+    }
+
+    private func riskInsightRow(text: String, stripe: Color) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(stripe)
+                .frame(width: 4)
+                .frame(minHeight: 22)
+                .padding(.top, 5)
+
+            Text(text)
+                .font(FaroType.body())
+                .foregroundStyle(FaroPalette.ink.opacity(0.88))
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, FaroSpacing.xs)
     }
 }
 
-// MARK: - Helpers
+// MARK: - Helpers (shared with Settings & Submission)
 
 struct SectionHeader: View {
     let title: String
@@ -261,6 +418,8 @@ struct TagPill: View {
     let text: String
     let icon: String
     let tint: Color
+    /// When true (e.g. dashboard priority row), pills share width evenly.
+    var expandToFillWidth: Bool = false
 
     var body: some View {
         HStack(spacing: 5) {
@@ -268,8 +427,11 @@ struct TagPill: View {
                 .font(.caption2)
             Text(text)
                 .font(FaroType.caption(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
         .foregroundStyle(tint)
+        .frame(maxWidth: expandToFillWidth ? .infinity : nil, alignment: .center)
         .padding(.horizontal, FaroSpacing.sm + 2)
         .padding(.vertical, FaroSpacing.xs + 1)
         .background(tint.opacity(0.12))

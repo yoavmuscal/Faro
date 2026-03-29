@@ -86,7 +86,9 @@ struct IntakeChoiceView: View {
             set: { if !$0 { demoSessionId = nil } }
         )) {
             if let sid = demoSessionId {
-                AgentTrackerView(sessionId: sid, businessName: "Sunny Days Daycare")
+                AgentTrackerView(sessionId: sid, businessName: "Sunny Days Daycare") {
+                    demoSessionId = nil
+                }
             }
         }
     }

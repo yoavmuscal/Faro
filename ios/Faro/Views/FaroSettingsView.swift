@@ -1,5 +1,8 @@
 import SwiftUI
 import PhotosUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// `PhotosPicker`'s label builder is not main-actor-isolated; keeping this separate avoids
 /// capturing `@MainActor`-isolated members of the parent settings view in that closure.
@@ -62,7 +65,9 @@ private struct ProfileAvatarPhotoPicker: View {
 struct FaroSettingsView: View {
     @EnvironmentObject private var appState: FaroAppState
     @EnvironmentObject private var authManager: AuthManager
+    @Binding var selectedSection: FaroSection
     @Environment(\.horizontalSizeClass) private var hSizeClass
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isLoadingPhoto = false
@@ -72,15 +77,16 @@ struct FaroSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: FaroSpacing.lg) {
+                greetingLine
+                    .padding(.horizontal, FaroSpacing.md)
+
                 profileHero
                     .padding(.horizontal, FaroSpacing.md)
 
-                if APIConfig.shouldShowAuth0InUI {
-                    auth0Card
-                        .padding(.horizontal, FaroSpacing.md)
-                }
+                unifiedStatusCard
+                    .padding(.horizontal, FaroSpacing.md)
 
-                analysisCard
+                getStartedCard
                     .padding(.horizontal, FaroSpacing.md)
 
                 aboutCard
@@ -105,6 +111,19 @@ struct FaroSettingsView: View {
         #endif
         .onChange(of: selectedPhoto) { _, newItem in
             Task { await loadProfilePhoto(from: newItem) }
+        }
+    }
+
+    // MARK: - Greeting
+
+    private var greetingLine: some View {
+        HStack {
+            Text(timeGreeting)
+                .font(FaroType.caption())
+                .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                .textCase(.uppercase)
+                .kerning(0.5)
+            Spacer()
         }
     }
 
@@ -136,11 +155,272 @@ struct FaroSettingsView: View {
         .faroGlassCard(cornerRadius: FaroRadius.xl)
     }
 
-    // MARK: - Auth0
+    // MARK: - Unified status (overview + session detail)
 
-    private var auth0Card: some View {
+    private var unifiedStatusCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: FaroSpacing.md) {
+                HStack(spacing: FaroSpacing.xs) {
+                    appIconBadge
+                    Text("Faro")
+                        .font(FaroType.caption(.semibold))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .textCase(.uppercase)
+                        .kerning(1)
+                }
+
+                Text(overviewHeadline)
+                    .font(FaroType.title3())
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(overviewSubtitle)
+                    .font(FaroType.subheadline())
+                    .foregroundStyle(.white.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if appState.hasResults {
+                    HStack(spacing: FaroSpacing.xs) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.9))
+                        Text("Analysis complete")
+                            .font(FaroType.caption(.semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background {
+                        Capsule(style: .continuous)
+                            .fill(.white.opacity(0.18))
+                    }
+                }
+            }
+            .padding(FaroSpacing.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                LinearGradient(
+                    colors: [FaroPalette.purpleDeep, FaroPalette.purple],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+
+            if appState.sessionId != nil {
+                VStack(alignment: .leading, spacing: FaroSpacing.sm) {
+                    labeledRow("Business", value: appState.businessName.isEmpty ? "—" : appState.businessName)
+
+                    if !appState.contactFirstName.isEmpty {
+                        labeledRow("Contact", value: "\(appState.contactFirstName) \(appState.contactLastName)")
+                    }
+
+                    HStack(spacing: 8) {
+                        Text("Status")
+                            .font(FaroType.caption())
+                            .foregroundStyle(FaroPalette.ink.opacity(0.45))
+                        Spacer()
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(appState.hasResults ? FaroPalette.success : FaroPalette.warning)
+                                .frame(width: 7, height: 7)
+                            Text(appState.hasResults ? "Complete" : "In Progress")
+                                .font(FaroType.caption(.semibold))
+                                .foregroundStyle(appState.hasResults ? FaroPalette.success : FaroPalette.warning)
+                        }
+                        .faroPillTag(
+                            color: appState.hasResults ? FaroPalette.success : FaroPalette.warning,
+                            intensity: 0.1
+                        )
+                    }
+                }
+                .padding(FaroSpacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(FaroPalette.surface.opacity(0.65))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
+                .strokeBorder(FaroPalette.glassStroke.opacity(0.35), lineWidth: 0.5)
+        }
+    }
+
+    @ViewBuilder
+    private var appIconBadge: some View {
+        brandLogoImage(side: 22, corner: 5)
+    }
+
+    /// App mark for status strip and About — prefers `FaroAppLogo` in Assets, then `AppIcon`, then gradient shield.
+    @ViewBuilder
+    private func brandLogoImage(side: CGFloat, corner: CGFloat) -> some View {
+        if UIImage(named: "FaroAppLogo") != nil {
+            Image("FaroAppLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: side, height: side)
+                .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+        } else if let uiIcon = UIImage(named: "AppIcon") {
+            Image(uiImage: uiIcon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: side, height: side)
+                .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+        } else {
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [FaroPalette.purpleDeep, FaroPalette.purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: side, height: side)
+                .overlay {
+                    Image(systemName: "shield.checkered")
+                        .font(.system(size: side * 0.38, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+        }
+    }
+
+    private var appMarketingVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    }
+
+    // MARK: - Get Started
+
+    private var getStartedCard: some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            SectionHeader(title: "Get Started", icon: "sparkles", tint: FaroPalette.purpleDeep)
+                .padding(.horizontal, FaroSpacing.xs)
+
+            VStack(spacing: FaroSpacing.xs) {
+                NavigationLink { OnboardingView() } label: {
+                    homeIntakeRow(
+                        title: "Guided Questionnaire",
+                        subtitle: "Step-by-step form — type at your own pace.",
+                        icon: "list.bullet.rectangle",
+                        iconColor: FaroPalette.purpleDeep
+                    )
+                }
+                .buttonStyle(.faroScale)
+
+                NavigationLink { VoiceIntakeView() } label: {
+                    homeIntakeRow(
+                        title: "Conversational Intake",
+                        subtitle: "Talk through the details with your AI agent.",
+                        icon: "waveform",
+                        iconColor: FaroPalette.info
+                    )
+                }
+                .buttonStyle(.faroScale)
+
+                NavigationLink { OnboardingView(isDemo: true) } label: {
+                    homeIntakeDemoRow
+                }
+                .buttonStyle(.faroScale)
+            }
+
+            if APIConfig.shouldShowAuth0InUI {
+                Divider()
+                    .padding(.vertical, FaroSpacing.xs)
+                auth0InlineSection
+            }
+        }
+        .padding(FaroSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faroGlassCard(cornerRadius: FaroRadius.xl)
+    }
+
+    private func homeIntakeRow(title: String, subtitle: String, icon: String, iconColor: Color) -> some View {
+        HStack(spacing: FaroSpacing.sm) {
+            Circle()
+                .fill(iconColor.opacity(0.13))
+                .frame(width: 40, height: 40)
+                .overlay {
+                    Image(systemName: icon)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(iconColor)
+                }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(FaroType.subheadline(.semibold))
+                    .foregroundStyle(FaroPalette.ink)
+                Text(subtitle)
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.22))
+        }
+        .padding(.horizontal, FaroSpacing.sm)
+        .padding(.vertical, 11)
+        .background {
+            Capsule(style: .continuous)
+                .fill(FaroPalette.surface.opacity(0.5))
+        }
+        .overlay {
+            Capsule(style: .continuous)
+                .strokeBorder(FaroPalette.glassStroke.opacity(0.25), lineWidth: 0.5)
+        }
+    }
+
+    private var homeIntakeDemoRow: some View {
+        HStack(spacing: FaroSpacing.sm) {
+            Circle()
+                .fill(FaroPalette.purple.opacity(0.13))
+                .frame(width: 40, height: 40)
+                .overlay {
+                    Image(systemName: "play.fill")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(FaroPalette.purple)
+                }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("Quick Demo")
+                        .font(FaroType.subheadline(.semibold))
+                        .foregroundStyle(FaroPalette.ink)
+                    Text("PRE-FILLED")
+                        .font(FaroType.caption2(.bold))
+                        .foregroundStyle(FaroPalette.purpleDeep)
+                        .faroPillTag(color: FaroPalette.purpleDeep, intensity: 0.1)
+                }
+                Text("See a full analysis using sample daycare data.")
+                    .font(FaroType.caption())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.22))
+        }
+        .padding(.horizontal, FaroSpacing.sm)
+        .padding(.vertical, 11)
+        .background {
+            Capsule(style: .continuous)
+                .fill(FaroPalette.surface.opacity(0.5))
+        }
+        .overlay {
+            Capsule(style: .continuous)
+                .strokeBorder(FaroPalette.glassStroke.opacity(0.25), lineWidth: 0.5)
+        }
+    }
+
+    // MARK: - Auth0 (inside Get Started)
+
+    private var auth0InlineSection: some View {
         VStack(alignment: .leading, spacing: FaroSpacing.sm) {
             SectionHeader(title: "Auth0", icon: "person.badge.key.fill", tint: FaroPalette.purpleDeep)
+                .padding(.horizontal, FaroSpacing.xs)
 
             /// Same codebase can produce different redirect URLs per developer if `PRODUCT_BUNDLE_IDENTIFIER` differs — each URL must be allow-listed in Auth0.
             if APIConfig.isAuth0Configured, let hint = APIConfig.auth0CallbackURLHint {
@@ -203,132 +483,104 @@ struct FaroSettingsView: View {
                     .foregroundStyle(FaroPalette.danger)
             }
         }
-        .padding(FaroSpacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
-    }
-
-    // MARK: - Analysis
-
-    private var analysisCard: some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.sm) {
-            SectionHeader(title: "Current Analysis", icon: "chart.bar.xaxis", tint: FaroPalette.purpleDeep)
-
-            if appState.sessionId != nil {
-                labeledRow("Business", value: appState.businessName.isEmpty ? "—" : appState.businessName)
-
-                if !appState.contactFirstName.isEmpty {
-                    labeledRow("Contact", value: "\(appState.contactFirstName) \(appState.contactLastName)")
-                }
-
-                HStack(spacing: 8) {
-                    Text("Status")
-                        .font(FaroType.caption())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.45))
-                    Spacer()
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(appState.hasResults ? FaroPalette.success : FaroPalette.warning)
-                            .frame(width: 7, height: 7)
-                        Text(appState.hasResults ? "Complete" : "In Progress")
-                            .font(FaroType.caption(.semibold))
-                            .foregroundStyle(appState.hasResults ? FaroPalette.success : FaroPalette.warning)
-                    }
-                    .faroPillTag(
-                        color: appState.hasResults ? FaroPalette.success : FaroPalette.warning,
-                        intensity: 0.1
-                    )
-                }
-            } else {
-                HStack(spacing: FaroSpacing.sm) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(FaroPalette.purpleDeep.opacity(0.7))
-                    Text("No analysis yet — start one from the Home tab.")
-                        .font(FaroType.subheadline())
-                        .foregroundStyle(FaroPalette.ink.opacity(0.55))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .padding(FaroSpacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
-    }
-
-    private func labeledRow(_ title: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title)
-                .font(FaroType.caption())
-                .foregroundStyle(FaroPalette.ink.opacity(0.45))
-            Spacer(minLength: FaroSpacing.sm)
-            Text(value)
-                .font(FaroType.caption(.semibold))
-                .foregroundStyle(FaroPalette.ink.opacity(0.8))
-                .multilineTextAlignment(.trailing)
-        }
     }
 
     // MARK: - About
 
     private var aboutCard: some View {
-        HStack(spacing: FaroSpacing.md) {
-            // App icon or fallback
-            ZStack {
-                if let uiIcon = UIImage(named: "AppIcon") {
-                    Image(uiImage: uiIcon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 50, height: 50)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(FaroPalette.glassStroke.opacity(0.4), lineWidth: 0.5)
-                        }
-                } else {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(FaroPalette.purpleDeep.gradient)
-                        .frame(width: 50, height: 50)
-                        .overlay {
-                            Image(systemName: "shield.checkered")
-                                .font(.body.weight(.medium))
-                                .foregroundStyle(.white)
-                        }
+        HStack(alignment: .center, spacing: FaroSpacing.md) {
+            brandLogoImage(side: 56, corner: 14)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(FaroPalette.glassStroke.opacity(0.35), lineWidth: 0.5)
                 }
-            }
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Faro")
-                    .font(FaroType.headline())
+                    .font(FaroType.title3(.bold))
                     .foregroundStyle(FaroPalette.ink)
                 Text("AI Insurance Agent")
-                    .font(FaroType.caption())
-                    .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                    .font(FaroType.subheadline())
+                    .foregroundStyle(FaroPalette.ink.opacity(0.45))
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
+            Text("v\(appMarketingVersion)")
                 .font(FaroType.caption(.semibold))
-                .foregroundStyle(FaroPalette.ink.opacity(0.35))
-                .faroPillTag(color: FaroPalette.ink, intensity: 0.05)
+                .foregroundStyle(FaroPalette.ink.opacity(0.42))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background {
+                    Capsule(style: .continuous)
+                        .fill(colorScheme == .dark ? FaroPalette.ink.opacity(0.12) : FaroPalette.ink.opacity(0.06))
+                }
         }
-        .padding(FaroSpacing.md)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
+        .padding(FaroSpacing.md + 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
+                .fill(colorScheme == .dark ? FaroPalette.surface.opacity(0.88) : Color.white)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
+                .strokeBorder(FaroPalette.glassStroke.opacity(colorScheme == .dark ? 0.38 : 0.22), lineWidth: 0.5)
+        }
     }
 
     // MARK: - Legal
 
     private var legalCard: some View {
-        VStack(alignment: .leading, spacing: FaroSpacing.xs) {
-            SectionHeader(title: "Legal", icon: "hand.raised.fill", tint: FaroPalette.info)
-            Text("Privacy policy will appear here in a future update.")
-                .font(FaroType.subheadline())
-                .foregroundStyle(FaroPalette.ink.opacity(0.6))
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: FaroSpacing.md) {
+            HStack(spacing: FaroSpacing.sm) {
+                Image(systemName: "hand.raised.fill")
+                    .font(.title3)
+                    .foregroundStyle(FaroPalette.info)
+                Text("Legal")
+                    .font(FaroType.title3(.bold))
+                    .foregroundStyle(FaroPalette.ink)
+            }
+
+            legalSubsection(title: "Privacy") {
+                Text("Faro collects information you provide during intake (typed answers, voice, or uploads) and data needed to run the app—such as device type and, if you use it, account details from sign-in. We use this to generate your analysis, operate the service, and improve the product. We do not sell your personal information.")
+            }
+
+            legalSubsection(title: "Insurance & professional advice") {
+                Text("Faro is an AI assistant. It is not an insurance carrier, broker, agent, or law firm. Premium estimates, coverage summaries, and recommendations are informational only—not binding quotes, policies, or legal advice. Confirm all coverage decisions with a licensed insurance professional.")
+            }
+
+            legalSubsection(title: "AI limitations") {
+                Text("Generated outputs may be incomplete, outdated, or inaccurate. You are responsible for how you use information produced by Faro.")
+            }
+
+            legalSubsection(title: "Contact") {
+                Text("For privacy questions or to exercise your rights, reach out through the support channel for your Faro deployment or your organization’s administrator.")
+            }
         }
-        .padding(FaroSpacing.md)
+        .padding(FaroSpacing.md + 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .faroGlassCard(cornerRadius: FaroRadius.xl)
+        .background {
+            RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
+                .fill(colorScheme == .dark ? FaroPalette.surface.opacity(0.88) : Color.white)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: FaroRadius.xl, style: .continuous)
+                .strokeBorder(FaroPalette.glassStroke.opacity(colorScheme == .dark ? 0.38 : 0.22), lineWidth: 0.5)
+        }
+    }
+
+    private func legalSubsection(title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: FaroSpacing.xs) {
+            Text(title)
+                .font(FaroType.subheadline(.semibold))
+                .foregroundStyle(FaroPalette.ink)
+            content()
+                .font(FaroType.subheadline())
+                .foregroundStyle(FaroPalette.ink.opacity(0.58))
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(3)
+        }
     }
 
     // MARK: - Sign Out
@@ -361,6 +613,63 @@ struct FaroSettingsView: View {
         return "\(first)\(last)"
     }
 
+    private var timeGreeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 5..<12:  return "Good morning"
+        case 12..<17: return "Good afternoon"
+        case 17..<21: return "Good evening"
+        default:      return "Good night"
+        }
+    }
+
+    private var overviewHeadline: String {
+        if appState.hasResults {
+            let biz = appState.businessName.isEmpty ? "Your Business" : appState.businessName
+            return "Analysis complete for \(biz)"
+        } else if appState.sessionId != nil {
+            return "Analysis in progress…"
+        } else {
+            return "Ready when you are"
+        }
+    }
+
+    private var overviewSubtitle: String {
+        if let summary = appState.results?.plainEnglishSummary, !summary.isEmpty {
+            return summary
+        }
+        if appState.hasResults {
+            let count = appState.results?.coverageOptions.count ?? 0
+            let premium = appState.totalEstimatedPremium
+            if premium.lowerBound > 0 {
+                let fmt = NumberFormatter()
+                fmt.numberStyle = .currency
+                fmt.maximumFractionDigits = 0
+                let lo = fmt.string(from: NSNumber(value: premium.lowerBound)) ?? ""
+                let hi = fmt.string(from: NSNumber(value: premium.upperBound)) ?? ""
+                return "\(count) coverage\(count == 1 ? "" : "s") mapped • \(lo)–\(hi)/yr estimated"
+            }
+            return "\(count) coverage option\(count == 1 ? "" : "s") mapped and ready to review."
+        }
+        if appState.sessionId != nil {
+            return "Your AI agents are working. Results will appear when ready."
+        }
+        return "Use Get Started below to run an analysis, then switch tabs for Coverage, Risk Profile, or Submission."
+    }
+
+    private func labeledRow(_ title: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(FaroType.caption())
+                .foregroundStyle(FaroPalette.ink.opacity(0.45))
+            Spacer(minLength: FaroSpacing.sm)
+            Text(value)
+                .font(FaroType.caption(.semibold))
+                .foregroundStyle(FaroPalette.ink.opacity(0.8))
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
     @MainActor
     private func loadProfilePhoto(from item: PhotosPickerItem?) async {
         guard let item else { return }
@@ -383,7 +692,7 @@ struct FaroSettingsView: View {
 
 #Preview {
     NavigationStack {
-        FaroSettingsView()
+        FaroSettingsView(selectedSection: .constant(.profile))
     }
     .environmentObject(FaroAppState())
     .environmentObject(AuthManager())

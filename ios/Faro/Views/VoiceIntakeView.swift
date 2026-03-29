@@ -126,7 +126,10 @@ struct VoiceIntakeView: View {
             vm.abortConversation()
         }
         .navigationDestination(item: $vm.analysisSessionId) { sessionId in
-            AgentTrackerView(sessionId: sessionId, businessName: "Your Business")
+            AgentTrackerView(sessionId: sessionId, businessName: "Your Business") {
+                vm.analysisSessionId = nil
+                dismiss()
+            }
         }
         .onChange(of: vm.analysisSessionId) { _, newId in
             if let id = newId {

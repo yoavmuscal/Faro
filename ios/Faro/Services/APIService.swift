@@ -131,6 +131,21 @@ actor APIService {
         return try decoder.decode(StatusResponse.self, from: data)
     }
 
+    // MARK: - POST /results/{session_id}/chat
+
+    func sendCoverageChat(sessionId: String, message: String) async throws -> String {
+        var request = URLRequest(url: URL(string: "\(baseURL)/results/\(sessionId)/chat")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload = CoverageChatRequest(message: message)
+        request.httpBody = try JSONEncoder().encode(payload)
+        await applyAuth(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response, data: data)
+        return try decoder.decode(CoverageChatResponse.self, from: data).reply
+    }
+
     // MARK: - Helpers
 
     private func validate(_ response: URLResponse, data: Data) throws {
