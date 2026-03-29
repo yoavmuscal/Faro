@@ -390,20 +390,21 @@ enum PDFBuilder {
         let boxW = (contentWidth - totalGaps - gap * CGFloat(steps.count - 1)) / CGFloat(steps.count)
 
         var x = margin
-        let labelAttrs: [NSAttributedString.Key: Any] = [
+        var labelAttrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
             .foregroundColor: UIColor.white,
         ]
+        let centerParagraph = NSMutableParagraphStyle()
+        centerParagraph.alignment = .center
+        labelAttrs[.paragraphStyle] = centerParagraph
         for (i, step) in steps.enumerated() {
             let rect = CGRect(x: x, y: y, width: boxW, height: h)
             ctx.setFillColor(colors[i].cgColor)
             let path = UIBezierPath(roundedRect: rect, cornerRadius: 8)
             ctx.addPath(path.cgPath)
             ctx.fillPath()
-            (step as NSString).draw(
-                in: CGRect(x: x, y: y + 12, width: boxW, height: 18),
-                withAttributes: labelAttrs
-            )
+            let attr = attributedStringWithBoldAsterisks(step, baseAttributes: labelAttrs)
+            drawAttributedStringCenteredInRect(attr, rect: rect)
             x += boxW + gap
             if i < steps.count - 1 {
                 // Chevron
@@ -543,15 +544,17 @@ enum PDFBuilder {
             withAttributes: lowHighAttrs
         )
 
-        let labelAttrs: [NSAttributedString.Key: Any] = [
+        var labelAttrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: 10, weight: .medium),
             .foregroundColor: PDFTheme.bodyText,
         ]
-        ("Profile: \(label)" as NSString).draw(
-            in: CGRect(x: margin, y: yy + trackH + 18, width: contentWidth, height: 16),
-            withAttributes: labelAttrs
-        )
-        return yy + trackH + 38
+        let lp = NSMutableParagraphStyle()
+        lp.alignment = .natural
+        labelAttrs[.paragraphStyle] = lp
+        let profileAttr = attributedStringWithBoldAsterisks("Profile: \(label)", baseAttributes: labelAttrs)
+        let profileH = heightForAttributedString(profileAttr, width: contentWidth)
+        profileAttr.draw(in: CGRect(x: margin, y: yy + trackH + 18, width: contentWidth, height: max(profileH, 16)))
+        return yy + trackH + 18 + max(profileH, 16) + 12
     }
 
     private static func riskLevelT(_ raw: String) -> CGFloat {
@@ -560,6 +563,64 @@ enum PDFBuilder {
         if s.contains("low") || s.contains("minimal") { return 0.12 }
         if s.contains("moderate") || s.contains("medium") { return 0.5 }
         return 0.55
+    }
+
+    // MARK: - Attributed text (`*bold*` → bold)
+
+    /// Pairs of asterisks wrap bold segments: `*emphasis*` → **emphasis** with asterisks removed. Unpaired `*` is kept as literal.
+    private static func attributedStringWithBoldAsterisks(_ string: String, baseAttributes: [NSAttributedString.Key: Any]) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        let baseFont = baseAttributes[.font] as? UIFont ?? UIFont.systemFont(ofSize: 11)
+        var boldAttrs = baseAttributes
+        boldAttrs[.font] = UIFont.systemFont(ofSize: baseFont.pointSize, weight: .bold)
+
+        var i = string.startIndex
+        while i < string.endIndex {
+            if string[i] == "*" {
+                let start = string.index(after: i)
+                if start < string.endIndex, let end = string[start...].firstIndex(of: "*") {
+                    let inner = String(string[start..<end])
+                    result.append(NSAttributedString(string: inner, attributes: boldAttrs))
+                    i = string.index(after: end)
+                    continue
+                } else {
+                    result.append(NSAttributedString(string: "*", attributes: baseAttributes))
+                    i = string.index(after: i)
+                    continue
+                }
+            }
+            var j = i
+            while j < string.endIndex && string[j] != "*" {
+                j = string.index(after: j)
+            }
+            let plain = String(string[i..<j])
+            if !plain.isEmpty {
+                result.append(NSAttributedString(string: plain, attributes: baseAttributes))
+            }
+            i = j
+        }
+        return result
+    }
+
+    private static func heightForAttributedString(_ attributed: NSAttributedString, width: CGFloat) -> CGFloat {
+        ceil(
+            attributed.boundingRect(
+                with: CGSize(width: width, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                context: nil
+            ).height
+        )
+    }
+
+    private static func drawAttributedStringCenteredInRect(_ attributed: NSAttributedString, rect: CGRect) {
+        let size = attributed.boundingRect(
+            with: CGSize(width: rect.width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        ).size
+        let h = ceil(size.height)
+        let drawRect = CGRect(x: rect.minX, y: rect.midY - h / 2, width: rect.width, height: h)
+        attributed.draw(in: drawRect)
     }
 
     // MARK: - Narrative visuals (callouts, diagrams)
@@ -580,10 +641,12 @@ enum PDFBuilder {
         ctx.cgContext.fill(headerBg)
         ctx.cgContext.setFillColor(PDFTheme.accentPurple.cgColor)
         ctx.cgContext.fill(CGRect(x: margin, y: y, width: 4, height: titleLineHeight + 4))
-        (title as NSString).draw(
-            in: CGRect(x: margin + 12, y: y + 2, width: contentWidth - 16, height: titleLineHeight),
-            withAttributes: sectionTitleAttrs
-        )
+        var titleAttrs = sectionTitleAttrs
+        let ps = NSMutableParagraphStyle()
+        ps.alignment = .left
+        titleAttrs[.paragraphStyle] = ps
+        let titleAttr = attributedStringWithBoldAsterisks(title, baseAttributes: titleAttrs)
+        titleAttr.draw(in: CGRect(x: margin + 12, y: y + 2, width: contentWidth - 16, height: titleLineHeight))
         y += titleLineHeight + 12
     }
 
@@ -597,7 +660,15 @@ enum PDFBuilder {
         attrs: [NSAttributedString.Key: Any]
     ) {
         let pad: CGFloat = 12
-        let h = heightForString(text, width: contentWidth - pad * 2, attributes: attrs) + pad * 2
+        var base = attrs
+        if base[.paragraphStyle] == nil {
+            let p = NSMutableParagraphStyle()
+            p.alignment = .natural
+            base[.paragraphStyle] = p
+        }
+        let attr = attributedStringWithBoldAsterisks(text, baseAttributes: base)
+        let innerW = contentWidth - pad * 2
+        let h = heightForAttributedString(attr, width: innerW) + pad * 2
         ensureSpace(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: h + 18)
         let rect = CGRect(x: margin, y: y, width: contentWidth, height: h)
         ctx.cgContext.setFillColor(PDFTheme.lightLavender.cgColor)
@@ -608,7 +679,7 @@ enum PDFBuilder {
         ctx.cgContext.setLineWidth(1)
         ctx.cgContext.addPath(path.cgPath)
         ctx.cgContext.strokePath()
-        (text as NSString).draw(in: rect.insetBy(dx: pad, dy: pad), withAttributes: attrs)
+        attr.draw(in: rect.insetBy(dx: pad, dy: pad))
         y += h + 14
     }
 
@@ -622,7 +693,15 @@ enum PDFBuilder {
         bodyAttrs: [NSAttributedString.Key: Any]
     ) {
         let pad: CGFloat = 14
-        let h = heightForString(text, width: contentWidth - pad * 2, attributes: bodyAttrs) + pad * 2
+        var base = bodyAttrs
+        if base[.paragraphStyle] == nil {
+            let p = NSMutableParagraphStyle()
+            p.alignment = .natural
+            base[.paragraphStyle] = p
+        }
+        let attr = attributedStringWithBoldAsterisks(text, baseAttributes: base)
+        let innerW = contentWidth - pad * 2
+        let h = heightForAttributedString(attr, width: innerW) + pad * 2
         ensureSpace(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: h + 18)
         let rect = CGRect(x: margin, y: y, width: contentWidth, height: h)
         ctx.cgContext.setFillColor(UIColor(red: 0.97, green: 0.95, blue: 1, alpha: 1).cgColor)
@@ -633,7 +712,7 @@ enum PDFBuilder {
         ctx.cgContext.setLineWidth(1.5)
         ctx.cgContext.addPath(path.cgPath)
         ctx.cgContext.strokePath()
-        (text as NSString).draw(in: rect.insetBy(dx: pad, dy: pad), withAttributes: bodyAttrs)
+        attr.draw(in: rect.insetBy(dx: pad, dy: pad))
         y += h + 16
     }
 
@@ -688,7 +767,14 @@ enum PDFBuilder {
                     .foregroundColor: PDFTheme.muted,
                 ]
                 (tiles[idx].0 as NSString).draw(in: CGRect(x: x + 8, y: yy + 6, width: tileW - 16, height: 12), withAttributes: cap)
-                (tiles[idx].1 as NSString).draw(in: CGRect(x: x + 8, y: yy + 20, width: tileW - 16, height: 24), withAttributes: valueAttrs)
+                var valBase = valueAttrs
+                if valBase[.paragraphStyle] == nil {
+                    let p = NSMutableParagraphStyle()
+                    p.alignment = .natural
+                    valBase[.paragraphStyle] = p
+                }
+                let valAttr = attributedStringWithBoldAsterisks(tiles[idx].1, baseAttributes: valBase)
+                valAttr.draw(in: CGRect(x: x + 8, y: yy + 20, width: tileW - 16, height: 24))
             }
         }
         y += CGFloat(2) * (tileH + gap) + 10
@@ -783,14 +869,18 @@ enum PDFBuilder {
 
         let lineX = margin + 6
         for item in cleaned {
-            let h = heightForString(item, width: contentWidth - 28, attributes: bodyAttrs)
+            var body = bodyAttrs
+            if body[.paragraphStyle] == nil {
+                let p = NSMutableParagraphStyle()
+                p.alignment = .natural
+                body[.paragraphStyle] = p
+            }
+            let attr = attributedStringWithBoldAsterisks(item, baseAttributes: body)
+            let h = heightForAttributedString(attr, width: contentWidth - 28)
             ensureSpace(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: h + 14)
             ctx.cgContext.setFillColor(accent.cgColor)
             ctx.cgContext.fillEllipse(in: CGRect(x: lineX, y: y + 4, width: 8, height: 8))
-            (item as NSString).draw(
-                in: CGRect(x: margin + 22, y: y, width: contentWidth - 22, height: h + 4),
-                withAttributes: bodyAttrs
-            )
+            attr.draw(in: CGRect(x: margin + 22, y: y, width: contentWidth - 22, height: h + 4))
             y += h + 6
         }
         y += 12
@@ -858,13 +948,15 @@ enum PDFBuilder {
                     in: CGRect(x: x + 8, y: y + 6, width: tw - 16, height: 12),
                     withAttributes: captionAttrs
                 )
-                (pair.1 as NSString).draw(
-                    in: CGRect(x: x + 8, y: y + 22, width: tw - 16, height: 28),
-                    withAttributes: [
-                        .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
-                        .foregroundColor: PDFTheme.bodyText,
-                    ]
-                )
+                var valAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
+                    .foregroundColor: PDFTheme.bodyText,
+                ]
+                let vp = NSMutableParagraphStyle()
+                vp.alignment = .natural
+                valAttrs[.paragraphStyle] = vp
+                let valAttr = attributedStringWithBoldAsterisks(pair.1, baseAttributes: valAttrs)
+                valAttr.draw(in: CGRect(x: x + 8, y: y + 22, width: tw - 16, height: 28))
             }
             y += th + 14
         }
@@ -961,18 +1053,24 @@ enum PDFBuilder {
                 ctx.cgContext.fill(row)
                 ctx.cgContext.setFillColor(PDFTheme.accentPurple.cgColor)
                 ctx.cgContext.fill(CGRect(x: margin, y: y, width: 4, height: 40))
-                (title as NSString).draw(
-                    in: CGRect(x: margin + 12, y: y + 6, width: contentWidth - 16, height: 16),
-                    withAttributes: [
-                        .font: UIFont.systemFont(ofSize: 11, weight: .semibold),
-                        .foregroundColor: PDFTheme.bodyText,
-                    ]
-                )
+                var titleBase: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 11, weight: .semibold),
+                    .foregroundColor: PDFTheme.bodyText,
+                ]
+                let tp = NSMutableParagraphStyle()
+                tp.alignment = .natural
+                titleBase[.paragraphStyle] = tp
+                let titleAttr = attributedStringWithBoldAsterisks(title, baseAttributes: titleBase)
+                titleAttr.draw(in: CGRect(x: margin + 12, y: y + 6, width: contentWidth - 16, height: 16))
                 if !sub.isEmpty {
-                    (sub as NSString).draw(
-                        in: CGRect(x: margin + 12, y: y + 22, width: contentWidth - 16, height: 14),
-                        withAttributes: captionAttrs
-                    )
+                    var cap = captionAttrs
+                    if cap[.paragraphStyle] == nil {
+                        let p = NSMutableParagraphStyle()
+                        p.alignment = .natural
+                        cap[.paragraphStyle] = p
+                    }
+                    let subAttr = attributedStringWithBoldAsterisks(sub, baseAttributes: cap)
+                    subAttr.draw(in: CGRect(x: margin + 12, y: y + 22, width: contentWidth - 16, height: 14))
                 }
                 y += 46
             }
@@ -996,14 +1094,18 @@ enum PDFBuilder {
                 let head = parts.joined(separator: " · ")
                 let line = loss.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let text = line.isEmpty ? head : "\(head)\n\(line)"
-                let h = heightForString(text, width: contentWidth - 20, attributes: bodyAttrs)
+                var b = bodyAttrs
+                if b[.paragraphStyle] == nil {
+                    let p = NSMutableParagraphStyle()
+                    p.alignment = .natural
+                    b[.paragraphStyle] = p
+                }
+                let lossAttr = attributedStringWithBoldAsterisks(text, baseAttributes: b)
+                let h = heightForAttributedString(lossAttr, width: contentWidth - 20)
                 ensureSpace(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: h + 12)
                 ctx.cgContext.setFillColor(PDFTheme.required.withAlphaComponent(0.85).cgColor)
                 ctx.cgContext.fillEllipse(in: CGRect(x: margin + 4, y: y + 4, width: 8, height: 8))
-                (text as NSString).draw(
-                    in: CGRect(x: margin + 20, y: y, width: contentWidth - 20, height: h + 4),
-                    withAttributes: bodyAttrs
-                )
+                lossAttr.draw(in: CGRect(x: margin + 20, y: y, width: contentWidth - 20, height: h + 4))
                 y += h + 10
             }
         }
@@ -1071,10 +1173,14 @@ enum PDFBuilder {
             ctx.cgContext.fill(row)
             drawChainLinkIcon(ctx: ctx.cgContext, in: CGRect(x: margin + 10, y: y + 8, width: 18, height: 18), color: PDFTheme.sky)
             let display = url.count > 70 ? String(url.prefix(67)) + "…" : url
-            (display as NSString).draw(
-                in: CGRect(x: margin + 34, y: y + 10, width: contentWidth - 40, height: 22),
-                withAttributes: bodyAttrs
-            )
+            var linkBase = bodyAttrs
+            if linkBase[.paragraphStyle] == nil {
+                let p = NSMutableParagraphStyle()
+                p.alignment = .natural
+                linkBase[.paragraphStyle] = p
+            }
+            let linkAttr = attributedStringWithBoldAsterisks(display, baseAttributes: linkBase)
+            linkAttr.draw(in: CGRect(x: margin + 34, y: y + 10, width: contentWidth - 40, height: 22))
             y += h + 6
         }
         y += 8
@@ -1086,7 +1192,6 @@ enum PDFBuilder {
         ctx.setLineWidth(2)
         let w = rect.width
         let h = rect.height
-        let cx = rect.midX
         let cy = rect.midY
         ctx.addEllipse(in: CGRect(x: rect.minX + w * 0.05, y: cy - h * 0.25, width: w * 0.45, height: h * 0.5))
         ctx.addEllipse(in: CGRect(x: rect.minX + w * 0.5, y: cy - h * 0.25, width: w * 0.45, height: h * 0.5))
@@ -1111,10 +1216,41 @@ enum PDFBuilder {
         let stripeColor = categoryUIColor(option.category)
         let diagRowH: CGFloat = 40
         let textW = contentWidth - innerPad * 2 - 8
-        let descHeight = heightForString(option.description, width: textW, attributes: bodyAttrs)
-        var blockH: CGFloat = innerPad + 16 + 22 + diagRowH + 10 + descHeight + 10 + 16
-        if option.triggerEvent != nil { blockH += 22 }
-        blockH += innerPad * 0.5
+        var bodyPara = bodyAttrs
+        if bodyPara[.paragraphStyle] == nil {
+            let p = NSMutableParagraphStyle()
+            p.alignment = .natural
+            bodyPara[.paragraphStyle] = p
+        }
+        let descAttr = attributedStringWithBoldAsterisks(option.description, baseAttributes: bodyPara)
+        let descHeight = heightForAttributedString(descAttr, width: textW)
+
+        var titlePara = sectionTitleAttrs
+        if titlePara[.paragraphStyle] == nil {
+            let p = NSMutableParagraphStyle()
+            p.alignment = .natural
+            titlePara[.paragraphStyle] = p
+        }
+        let typeAttr = attributedStringWithBoldAsterisks(option.type, baseAttributes: titlePara)
+        let typeH = heightForAttributedString(typeAttr, width: textW)
+
+        var triggerAttr: NSAttributedString?
+        if let trigger = option.triggerEvent {
+            var triggerAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.italicSystemFont(ofSize: 10),
+                .foregroundColor: PDFTheme.accentPurple,
+            ]
+            let p = NSMutableParagraphStyle()
+            p.alignment = .natural
+            triggerAttrs[.paragraphStyle] = p
+            triggerAttr = attributedStringWithBoldAsterisks(trigger, baseAttributes: triggerAttrs)
+        }
+        let triggerExtra: CGFloat = {
+            guard let t = triggerAttr else { return 0 }
+            return heightForAttributedString(t, width: textW) + 8
+        }()
+
+        var blockH: CGFloat = innerPad + 16 + typeH + 6 + diagRowH + 8 + descHeight + 8 + 16 + triggerExtra + innerPad * 0.5
 
         ensureSpace(ctx: ctx, y: &y, margin: margin, pageHeight: pageHeight, needed: blockH + 16)
 
@@ -1138,11 +1274,8 @@ enum PDFBuilder {
         var cy = y + innerPad
         (categoryLabel(option.category).uppercased() as NSString).draw(at: CGPoint(x: margin + 12, y: cy), withAttributes: badgeAttrs)
         cy += 16
-        (option.type as NSString).draw(
-            in: CGRect(x: margin + 12, y: cy, width: textW, height: 22),
-            withAttributes: sectionTitleAttrs
-        )
-        cy += 24
+        typeAttr.draw(in: CGRect(x: margin + 12, y: cy, width: textW, height: typeH))
+        cy += typeH + 6
 
         let colW = (contentWidth - 24) / 2
         drawConfidenceMiniDiagram(
@@ -1161,10 +1294,7 @@ enum PDFBuilder {
         )
         cy += diagRowH + 8
 
-        (option.description as NSString).draw(
-            in: CGRect(x: margin + 12, y: cy, width: textW, height: descHeight + 4),
-            withAttributes: bodyAttrs
-        )
+        descAttr.draw(in: CGRect(x: margin + 12, y: cy, width: textW, height: descHeight + 4))
         cy += descHeight + 8
 
         let premiumLine = "$\(Int(option.estimatedPremiumLow).formatted()) – $\(Int(option.estimatedPremiumHigh).formatted()) / yr (annual band)"
@@ -1174,15 +1304,9 @@ enum PDFBuilder {
         )
         cy += 18
 
-        if let trigger = option.triggerEvent {
-            let triggerAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.italicSystemFont(ofSize: 10),
-                .foregroundColor: PDFTheme.accentPurple,
-            ]
-            (trigger as NSString).draw(
-                in: CGRect(x: margin + 12, y: cy, width: textW, height: 20),
-                withAttributes: triggerAttrs
-            )
+        if let trigAttr = triggerAttr {
+            let th = heightForAttributedString(trigAttr, width: textW)
+            trigAttr.draw(in: CGRect(x: margin + 12, y: cy, width: textW, height: max(th, 14)))
         }
 
         y += blockH + 12
