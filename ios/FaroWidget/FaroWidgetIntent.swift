@@ -1,4 +1,4 @@
-import AppIntents
+    import AppIntents
 
 /// User-configurable tap target for the Faro home screen widget.
 enum FaroWidgetTapDestination: String, AppEnum {

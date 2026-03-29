@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import QuickLook
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -97,6 +98,10 @@ struct CoverageDashboardView: View {
     @StateObject private var coverageChatSpeech = CoverageChatSpeechTranscriber()
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
+
+    @State private var pdfPreviewURL: URL?
+    @State private var isBuildingPDF = false
+    @State private var showPDFExportFailed = false
 
     init(results: ResultsResponse, sessionId: String, businessName: String = "Business") {
         self.results = results
@@ -227,6 +232,67 @@ struct CoverageDashboardView: View {
         return w.type
     }
 
+    /// Builds the export PDF on the main actor and presents Quick Look (toolbar + hero row).
+    private func openPDFExport() {
+        guard !isBuildingPDF else { return }
+        isBuildingPDF = true
+        let res = results
+        let name = businessName.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task { @MainActor in
+            defer { isBuildingPDF = false }
+            guard let url = PDFBuilder.build(from: res, businessName: name.isEmpty ? "Business" : name) else {
+                showPDFExportFailed = true
+                return
+            }
+            pdfPreviewURL = url
+        }
+    }
+
+    private var pdfExportHeroRow: some View {
+        Button(action: openPDFExport) {
+            HStack(spacing: FaroSpacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: FaroRadius.md, style: .continuous)
+                        .fill(FaroPalette.purpleDeep.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "doc.richtext.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(FaroPalette.purpleDeep)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("PDF report")
+                        .font(FaroType.subheadline(.semibold))
+                        .foregroundStyle(FaroPalette.ink)
+                    Text("Open a full branded export — preview, AirDrop, or save to Files")
+                        .font(FaroType.caption())
+                        .foregroundStyle(FaroPalette.ink.opacity(0.5))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if isBuildingPDF {
+                    ProgressView()
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(FaroPalette.ink.opacity(0.35))
+                }
+            }
+            .padding(FaroSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
+                    .fill(FaroPalette.surface)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: FaroRadius.lg, style: .continuous)
+                            .strokeBorder(FaroPalette.glassStroke.opacity(0.55), lineWidth: 1)
+                    }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isBuildingPDF)
+        .accessibilityLabel("View PDF report")
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: isWideLayout ? FaroSpacing.xl : FaroSpacing.lg) {
@@ -243,6 +309,25 @@ struct CoverageDashboardView: View {
         .navigationTitle("Coverage")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: openPDFExport) {
+                    if isBuildingPDF {
+                        ProgressView()
+                    } else {
+                        Label("PDF", systemImage: "doc.text.fill")
+                    }
+                }
+                .disabled(isBuildingPDF)
+                .accessibilityLabel("View PDF report")
+            }
+        }
+        .quickLookPreview($pdfPreviewURL)
+        .alert("Couldn’t create PDF", isPresented: $showPDFExportFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Please try again.")
+        }
         #endif
         .onAppear {
             WidgetDataWriter.update(from: results, businessName: businessName)
@@ -363,6 +448,9 @@ struct CoverageDashboardView: View {
 
             priorityBadgesRow
                 .padding(.top, FaroSpacing.xs)
+
+            pdfExportHeroRow
+                .padding(.top, FaroSpacing.sm)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
