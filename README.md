@@ -1,23 +1,48 @@
+<h1 align="center">Faro</h1>
+
+<p align="center">Native iOS and iPadOS commercial insurance intake with agent orchestration and conversational voice.</p>
+
 <p align="center">
-  <strong>Faro</strong> — AI-native commercial insurance intake & analysis on iOS / iPadOS
+  <a href="https://www.swift.org/"><img src="https://img.shields.io/badge/Swift-F05138?style=plastic&logo=swift&logoColor=white" alt="Swift" /></a>
+  <a href="https://developer.apple.com/xcode/swiftui/"><img src="https://img.shields.io/badge/SwiftUI-0066CC?style=plastic&logo=swift&logoColor=white" alt="SwiftUI" /></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3776AB?style=plastic&logo=python&logoColor=white" alt="Python" /></a>
+  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-009688?style=plastic&logo=fastapi&logoColor=white" alt="FastAPI" /></a>
+  <a href="https://www.mongodb.com/atlas"><img src="https://img.shields.io/badge/MongoDB%20Atlas-47A248?style=plastic&logo=mongodb&logoColor=white" alt="MongoDB Atlas" /></a>
+  <a href="https://auth0.com/"><img src="https://img.shields.io/badge/Auth0-EB5424?style=plastic&logo=auth0&logoColor=white" alt="Auth0" /></a>
 </p>
 
 <p align="center">
-  <a href="https://developer.apple.com/swift/"><img src="https://img.shields.io/badge/Swift-5.9+-F05138?logo=swift&logoColor=white" alt="Swift" /></a>
-  <a href="https://developer.apple.com/xcode/swiftui/"><img src="https://img.shields.io/badge/SwiftUI-0066CC?logo=swift&logoColor=white" alt="SwiftUI" /></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white" alt="Python" /></a>
-  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI" /></a>
-  <a href="https://www.mongodb.com/atlas"><img src="https://img.shields.io/badge/MongoDB_Atlas-47A248?logo=mongodb&logoColor=white" alt="MongoDB Atlas" /></a>
-  <a href="https://auth0.com/"><img src="https://img.shields.io/badge/Auth0-EB5424?logo=auth0&logoColor=white" alt="Auth0" /></a>
+  <a href="https://ai.google.dev/"><img src="https://img.shields.io/badge/Google%20Gemini-4285F4?style=plastic&logo=googlegemini&logoColor=white" alt="Google Gemini" /></a>
+  <a href="https://docs.langchain.com/oss/python/langgraph/overview"><img src="https://img.shields.io/badge/LangGraph-1C3C3C?style=plastic&logo=langgraph&logoColor=white" alt="LangGraph" /></a>
+  <a href="https://elevenlabs.io/"><img src="https://img.shields.io/badge/ElevenLabs-000000?style=plastic&logo=elevenlabs&logoColor=white" alt="ElevenLabs" /></a>
+  <a href="https://developer.apple.com/documentation/charts"><img src="https://img.shields.io/badge/Swift%20Charts-34C759?style=plastic&logo=apple&logoColor=white" alt="Swift Charts" /></a>
+  <a href="https://developer.apple.com/documentation/widgetkit"><img src="https://img.shields.io/badge/WidgetKit-007AFF?style=plastic&logo=apple&logoColor=white" alt="WidgetKit" /></a>
+</p>
+
+<p align="center">Built for <strong>Yale Hacks 2026</strong> (YHack Spring 2026) · <a href="https://devpost.com/software/faro-5zwrxk">Devpost</a> · <a href="https://www.youtube.com/watch?v=njeiPjtFPXs">Demo video</a></p>
+
+## Project preview
+
+<p align="center">
+  <a href="https://devpost.com/software/faro-5zwrxk"><img src="https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/004/508/986/datas/original.png" alt="Faro iOS profile, conversational voice intake, agent analysis, coverage dashboard, risk profile, and PDF export" width="960" /></a>
+</p>
+
+*Native app screens from the Yale Hacks 2026 submission.*
+
+<details>
+<summary>View the system architecture and PDF export</summary>
+
+<p align="center">
+  <a href="https://devpost.com/software/faro-5zwrxk"><img src="https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/004/508/989/datas/original.png" alt="Faro architecture connecting SwiftUI, WidgetKit, FastAPI, Auth0, MongoDB, LangGraph, Gemini, and ElevenLabs" width="960" /></a>
 </p>
 
 <p align="center">
-  <a href="https://ai.google.dev/"><img src="https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white" alt="Google Gemini" /></a>
-  <a href="https://www.langchain.com/langgraph"><img src="https://img.shields.io/badge/LangGraph-1C3C3C?logo=langchain&logoColor=white" alt="LangGraph" /></a>
-  <a href="https://elevenlabs.io/"><img src="https://img.shields.io/badge/ElevenLabs-000000?logo=elevenlabs&logoColor=white" alt="ElevenLabs" /></a>
-  <a href="https://developer.apple.com/documentation/charts"><img src="https://img.shields.io/badge/Swift_Charts-34C759?logo=apple&logoColor=white" alt="Swift Charts" /></a>
-  <a href="https://developer.apple.com/documentation/widgetkit"><img src="https://img.shields.io/badge/WidgetKit-007AFF?logo=apple&logoColor=white" alt="WidgetKit" /></a>
+  <a href="https://devpost.com/software/faro-5zwrxk"><img src="https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/004/509/011/datas/original.png" alt="Faro example PDF export with coverage, risk, and submission sections" width="960" /></a>
 </p>
+
+*Images from the [team Devpost gallery](https://devpost.com/software/faro-5zwrxk). Coverage and premium figures are illustrative prototype output.*
+
+</details>
 
 ---
 
@@ -46,7 +71,7 @@
 
 ## Inspiration
 
-Commercial insurance for small businesses is broken. Getting coverage takes days of back-and-forth with human brokers, pages of confusing jargon, and mountains of paperwork. A daycare owner, a restaurant operator, a contractor—they want to know what they need, how much it costs, and where to get it. For people building a business, that friction is an easy problem to overlook until it blocks them cold.
+Commercial insurance for small businesses is broken. Getting coverage takes days of back-and-forth with human brokers, pages of confusing jargon, and mountains of paperwork. Daycare owners, restaurant operators, and contractors want to know what they need, how much it costs, and where to get it. For people building a business, that friction is an easy problem to overlook until it blocks them cold.
 
 We built **Faro** to compress that workflow into **under two minutes**, powered by an autonomous AI agent that reasons like a broker.
 
@@ -58,15 +83,15 @@ We chose to build natively on **iOS** and **iPadOS** because we believe the futu
 
 A business owner opens Faro on an **iPhone** or **iPad**, describes their company in plain English, and within about two minutes receives a **structured insurance analysis**. There are two primary intake paths:
 
-- **Guided questionnaire** — A one-question-at-a-time flow for business name, description, employee count, US state, and approximate annual revenue.
-- **Conversational voice intake** — The user talks naturally with Faro. An **ElevenLabs Conversational AI** agent runs a voice interview over a **WebSocket**; when the conversation finishes, the transcript is turned into structured intake fields using **Google Gemini**.
+- **Guided questionnaire**: A one-question-at-a-time flow for business name, description, employee count, US state, and approximate annual revenue.
+- **Conversational voice intake**: The user talks naturally with Faro. An **ElevenLabs Conversational AI** agent runs a voice interview over a **WebSocket**; when the conversation finishes, the transcript is turned into structured intake fields using **Google Gemini**.
 
 After intake, Faro runs a **four-step agent pipeline** (orchestrated with **LangGraph**, reasoning with **Gemini**):
 
-1. **Risk profiler** — Risk exposure and regulatory-style considerations.
-2. **Coverage mapper** — Required, recommended, and projected coverages with premium estimates (hybrid rules + LLM).
-3. **Submission builder** — Carrier-oriented submission packet content.
-4. **Explainer** — Plain-English narrative; optional **ElevenLabs text-to-speech** produces audio served at `GET /audio/{session_id}`.
+1. **Risk profiler**: Risk exposure and regulatory-style considerations.
+2. **Coverage mapper**: Required, recommended, and projected coverages with premium estimates (hybrid rules + LLM).
+3. **Submission builder**: Carrier-oriented submission packet content.
+4. **Explainer**: Plain-English narrative; optional **ElevenLabs text-to-speech** produces audio served at `GET /audio/{session_id}`.
 
 The **Agent tracker** screen streams step progress over **WebSocket** so users see the pipeline work in real time.
 
@@ -76,15 +101,15 @@ Outputs include a **coverage dashboard** (including **Swift Charts**), **spoken 
 
 ## Hackathon context & sponsor tracks
 
-Faro was built for **YHack 2026** (team context and prize strategy are captured in [`CONTEXT.md`](./CONTEXT.md)). Official eligibility always depends on the **published Devpost / organizer rules**; the list below is how the project **maps** to the tracks the team targeted.
+Faro was built for **Yale Hacks 2026 (YHack Spring 2026)** (team context and prize strategy are captured in [`CONTEXT.md`](./CONTEXT.md)). Official eligibility always depends on the **published Devpost / organizer rules**; the list below is how the project **maps** to the tracks the team targeted.
 
 | Track / prize (as planned in team strategy) | How Faro qualifies |
 | --- | --- |
-| **Harper — Personal AI Agent (1st)** | End-to-end **agentic** workflow: autonomous multi-step pipeline (risk → coverage → submission → explanation), not a single-shot chatbot. |
+| **Harper: Personal AI Agent (1st)** | End-to-end **agentic** workflow: autonomous multi-step pipeline (risk → coverage → submission → explanation), not a single-shot chatbot. |
 | **ElevenLabs (MLH)** | **Conversational AI** intake (live voice agent + WebSocket audio) **and** **TTS** for the spoken summary in the explainer step. |
 | **MongoDB (MLH)** | **MongoDB Atlas** (via **Motor**) for session state, step artifacts, and stored audio; **in-memory** degradation when `MONGODB_URI` is unset. |
 | **Auth0 (MLH)** | **Auth0.swift** on iOS; **FastAPI** verifies **JWTs** (RS256 via JWKS). Auth is **optional** if `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` are omitted (useful for local hacking). |
-| **Built with Zed** | Team used the **Zed** editor during the build (honor-system / process prize—confirm submission requirements). |
+| **Built with Zed** | Team used the **Zed** editor during the build (honor-system / process prize, confirm submission requirements). |
 | **Best UI/UX** | Polished **SwiftUI** flows, adaptive iPad/iPhone layouts, charts, PDF export, widget, and real-time agent UI. |
 | **Grand Prize** | Overall product completeness: native client + backend + real-time streaming + voice + persistence + auth. |
 
@@ -102,12 +127,12 @@ Gemini drives structured JSON generation across pipeline steps and **post-proces
 
 ### ElevenLabs (voice)
 
-- **Conversational AI** — Backend provisions or reuses a **ConvAI agent**, returns a **signed WebSocket URL** from `POST /conv/start`; the iOS client connects directly to ElevenLabs for bidirectional audio.
-- **Text-to-speech** — Explainer step calls the **REST TTS** API; audio is persisted and exposed through `GET /audio/{session_id}`.
+- **Conversational AI**: Backend provisions or reuses a **ConvAI agent**, returns a **signed WebSocket URL** from `POST /conv/start`; the iOS client connects directly to ElevenLabs for bidirectional audio.
+- **Text-to-speech**: Explainer step calls the **REST TTS** API; audio is persisted and exposed through `GET /audio/{session_id}`.
 
 ### MongoDB Atlas (persistence)
 
-**Motor** (async driver) talks to Atlas when configured. Documents accumulate heterogeneous JSON from each agent step—natural fit for a document store.
+**Motor** (async driver) talks to Atlas when configured. Documents accumulate heterogeneous JSON from each agent step, which fits a document store.
 
 ### Auth0 (authentication)
 
@@ -218,7 +243,7 @@ python3 -m venv .venv
 .venv/bin/pip install -U pip
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env
-# Edit .env — never commit real secrets
+# Edit .env: never commit real secrets
 ```
 
 The helper script `backend/run.sh` auto-creates `.venv` on first launch if missing (or uses `.uenv` if you already have that directory).
@@ -310,16 +335,16 @@ cd backend
 2. Enable **App Groups** on both targets.
 3. Shared group identifier: **`group.com.faro.shared`**.
 
-Apple’s free/personal teams can limit certain capabilities; widgets may sign while **App Group** persistence is constrained—test on a paid team when possible.
+Apple’s free/personal teams can limit certain capabilities; widgets may sign while **App Group** persistence is constrained. Test on a paid team when possible.
 
 ---
 
 ## Challenges we ran into
 
-- **ElevenLabs Conversational AI on iOS** — Bidirectional **WebSocket** audio required careful protocol alignment (initiation messages, format negotiation, echo handling, transcript assembly). Native **AVAudioSession** and converter plumbing added complexity.
-- **Auth0** — Redirect URLs, bundle identifiers, API **audience** strings, and JWKS verification must match **exactly** across dashboard, Swift SDK, and FastAPI.
-- **Gemini JSON reliability** — Structured outputs need timeouts, **fallback models**, and **Pydantic** validation to survive edge cases under demo pressure.
-- **Parallel development** — Swift models and FastAPI contracts evolved together; WebSocket payloads and results schemas had to stay in lockstep.
+- **ElevenLabs Conversational AI on iOS**: Bidirectional **WebSocket** audio required careful protocol alignment (initiation messages, format negotiation, echo handling, transcript assembly). Native **AVAudioSession** and converter plumbing added complexity.
+- **Auth0**: Redirect URLs, bundle identifiers, API **audience** strings, and JWKS verification must match **exactly** across dashboard, Swift SDK, and FastAPI.
+- **Gemini JSON reliability**: Structured outputs need timeouts, **fallback models**, and **Pydantic** validation to survive edge cases under demo pressure.
+- **Parallel development**: Swift models and FastAPI contracts evolved together; WebSocket payloads and results schemas had to stay in lockstep.
 
 ---
 
@@ -327,7 +352,7 @@ Apple’s free/personal teams can limit certain capabilities; widgets may sign w
 
 - **Native SwiftUI** client plus **FastAPI** backend with a **real** multi-step agent, built on a hackathon clock.
 - **Live WebSocket agent tracker** so users watch the pipeline progress instead of a static spinner.
-- **Two intake modes**—guided form **and** **ElevenLabs** voice—converging on one analysis path.
+- **Two intake modes**: guided form **and** **ElevenLabs** voice, both converging on one analysis path.
 - **Hybrid pricing logic** plus LLM reasoning for many commercial line types.
 - **PDF export**, **TTS summary**, **MongoDB** persistence with graceful degradation, **Auth0** security, and a **widget** surface.
 
@@ -336,7 +361,7 @@ Apple’s free/personal teams can limit certain capabilities; widgets may sign w
 ## What we learned
 
 - **Defensive LLM engineering** (timeouts, fallback models, strict parsing) is non-negotiable for demos that must not flake.
-- **Voice-first UX** is compelling, but **native** real-time audio is a specialty integration—budget time accordingly.
+- **Voice-first UX** is compelling, but **native** real-time audio is a specialty integration. Budget time accordingly.
 - **Document databases** fit agent pipelines that accumulate nested, evolving JSON per session.
 - **Auth0** accelerates security, but cross-platform **JWT** alignment has a learning curve.
 - **Streaming UX** (WebSocket progress) dramatically improves perceived quality versus batch-only APIs.
